@@ -1,0 +1,131 @@
+"use client"
+
+import { useMemo, useState } from "react"
+import { MOCK_LIBRARY } from "@/lib/mock-library"
+import type { ElementDoc } from "@/lib/types"
+
+interface Props {
+  open: boolean
+  onToggle: () => void
+  onPlace: (el: ElementDoc) => void
+  onOpenReader: (el: ElementDoc) => void
+}
+
+/**
+ * Library 侧栏：搜索 / 按插件浏览 / 放上画布。
+ * 默认完全收起，只留一枚墨点开关 —— 呼吸感的第一层。
+ */
+export function LibrarySidebar({ open, onToggle, onPlace, onOpenReader }: Props) {
+  const [query, setQuery] = useState("")
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
+  const filtered = useMemo(() => {
+    if (!query.trim()) return MOCK_LIBRARY
+    const q = query.trim().toLowerCase()
+    return MOCK_LIBRARY.map((p) => ({
+      ...p,
+      elements: p.elements.filter(
+        (e) => e.title.toLowerCase().includes(q) || e.excerpt.toLowerCase().includes(q),
+      ),
+    })).filter((p) => p.elements.length > 0 || p.name.toLowerCase().includes(q))
+  }, [query])
+
+  return (
+    <>
+      {/* 开关：一枚墨点 */}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-label={open ? "收起 Library" : "打开 Library"}
+        className="fixed left-5 top-5 z-40 flex h-9 w-9 items-center justify-center rounded-full border border-faint bg-surface text-foreground shadow-sm transition-transform hover:scale-105"
+      >
+        <span
+          className={`block h-2 w-2 rounded-full bg-accent transition-transform duration-300 ${open ? "scale-150" : ""}`}
+        />
+      </button>
+
+      {/* 面板 */}
+      <aside
+        aria-hidden={!open}
+        className={`fixed left-0 top-0 z-30 flex h-full w-72 flex-col border-r border-faint bg-surface/95 backdrop-blur-sm transition-transform duration-300 ease-out ${
+          open ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="px-5 pb-3 pt-16">
+          <p className="font-serif text-xs tracking-[0.3em] text-muted">LIBRARY</p>
+        </div>
+
+        <div className="px-5 pb-4">
+          <input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="搜索插件或元素…"
+            className="w-full border-b border-faint bg-transparent pb-1.5 text-sm outline-none placeholder:text-muted/60 focus:border-accent"
+          />
+        </div>
+
+        <nav className="flex-1 overflow-y-auto px-3 pb-6">
+          {filtered.map((plugin) => {
+            const isOpen = expanded[plugin.id] ?? query.trim().length > 0
+            return (
+              <div key={plugin.id} className="mb-1">
+                <button
+                  type="button"
+                  onClick={() => setExpanded((s) => ({ ...s, [plugin.id]: !isOpen }))}
+                  className="flex w-full items-baseline gap-2 rounded px-2 py-2 text-left hover:bg-faint/50"
+                >
+                  <span
+                    className={`shrink-0 whitespace-nowrap font-serif text-sm font-semibold ${isOpen ? "text-accent" : ""}`}
+                  >
+                    {plugin.name}
+                  </span>
+                  <span className="truncate text-[11px] text-muted">{plugin.description}</span>
+                </button>
+
+                {isOpen && (
+                  <ul className="mb-2 ml-2 border-l border-faint pl-3">
+                    {plugin.elements.map((el) => (
+                      <li key={el.id} className="group flex items-center gap-1 py-1">
+                        <button
+                          type="button"
+                          onClick={() => onPlace(el)}
+                          title="放上画布"
+                          className="flex-1 truncate text-left text-[13px] leading-6 text-foreground/85 hover:text-accent"
+                        >
+                          {el.title}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => onOpenReader(el)}
+                          title="阅读全文"
+                          className="rounded px-1.5 text-[11px] text-muted opacity-0 transition-opacity hover:text-accent group-hover:opacity-100"
+                        >
+                          读
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )
+          })}
+
+          {/* 新建插件 —— 占位，未接入 */}
+          <button
+            type="button"
+            title="骨架阶段未接入：将创建 library/ 下的新目录"
+            className="mt-4 w-full rounded border border-dashed border-faint px-2 py-2 text-center text-xs text-muted hover:border-accent/40 hover:text-accent"
+          >
+            + 新维度
+          </button>
+        </nav>
+
+        <div className="border-t border-faint px-5 py-3">
+          <p className="text-[11px] leading-5 text-muted">
+            点击元素放上画布 · 悬停「读」直达全文
+          </p>
+        </div>
+      </aside>
+    </>
+  )
+}

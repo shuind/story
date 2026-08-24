@@ -3,7 +3,7 @@
 @theme inline {
   --font-serif: var(--font-noto-serif), 'Songti SC', serif;
   --font-sans: var(--font-noto-sans), 'PingFang SC', sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, monospace;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, var(--font-noto-sans), 'PingFang SC', monospace;
 
   --color-background: #f7f4ee;
   --color-foreground: #26241f;
