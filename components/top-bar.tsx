@@ -9,6 +9,9 @@ interface Props {
   canvasList: CanvasListItem[]
   zoom: number
   onResetView: () => void
+  onZoomIn: () => void
+  onZoomOut: () => void
+  onFitCanvas: () => void
   onSwitchCanvas: (id: string) => void
   onCreateCanvas: () => void
   onRenameCanvas: () => void
@@ -28,6 +31,9 @@ export function TopBar({
   canvasList,
   zoom,
   onResetView,
+  onZoomIn,
+  onZoomOut,
+  onFitCanvas,
   onSwitchCanvas,
   onCreateCanvas,
   onRenameCanvas,
@@ -83,13 +89,19 @@ export function TopBar({
 
         <span className="h-4 w-px bg-faint" />
 
-        <button
-          type="button"
-          onClick={onResetView}
-          title="回到原点"
-          className="font-mono text-[11px] text-muted hover:text-accent"
-        >
-          {Math.round(zoom * 100)}%
+        <div className="flex items-center gap-1 rounded-full border border-faint bg-background/50 p-0.5">
+          <button type="button" onClick={onZoomOut} aria-label="缩小画布" title="缩小画布" className="flex h-6 w-6 items-center justify-center rounded-full text-sm text-muted hover:bg-surface hover:text-accent">
+            −
+          </button>
+          <button type="button" onClick={onResetView} title="重置视图" className="min-w-10 px-1 font-mono text-[11px] text-muted hover:text-accent">
+            {Math.round(zoom * 100)}%
+          </button>
+          <button type="button" onClick={onZoomIn} aria-label="放大画布" title="放大画布" className="flex h-6 w-6 items-center justify-center rounded-full text-sm text-muted hover:bg-surface hover:text-accent">
+            +
+          </button>
+        </div>
+        <button type="button" onClick={onFitCanvas} className="text-xs text-muted hover:text-accent">
+          适配
         </button>
 
         <span className="h-4 w-px bg-faint" />

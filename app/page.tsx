@@ -39,6 +39,33 @@ import type {
 
 let cardSeq = 0
 
+interface SelectionRect {
+  left: number
+  top: number
+  width: number
+  height: number
+}
+
+function selectionRectFromPoints(startX: number, startY: number, endX: number, endY: number): SelectionRect {
+  return {
+    left: Math.min(startX, endX),
+    top: Math.min(startY, endY),
+    width: Math.abs(endX - startX),
+    height: Math.abs(endY - startY),
+  }
+}
+
+function cardScreenBounds(card: CanvasCard, view: { x: number; y: number; zoom: number }) {
+  const width = card.fold === 0 ? 170 : 240
+  const height = card.fold === 0 ? 36 : 230
+  return {
+    left: view.x + card.x * view.zoom,
+    top: view.y + card.y * view.zoom,
+    right: view.x + (card.x + width) * view.zoom,
+    bottom: view.y + (card.y + height) * view.zoom,
+  }
+}
+
 interface DialogConfig {
   title: string
   description?: string
@@ -82,6 +109,7 @@ export default function Page() {
   const [connectSourceCardId, setConnectSourceCardId] = useState<string | null>(null)
   const [connectionLabel, setConnectionLabel] = useState("")
   const [isDropTarget, setIsDropTarget] = useState(false)
+  const [selectionBox, setSelectionBox] = useState<SelectionRect | null>(null)
   // ---- UI ----
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [readerElementId, setReaderElementId] = useState<string | null>(null)
@@ -99,9 +127,20 @@ export default function Page() {
   const githubBaseUrl = "https://github.com/shuind/story"
 
   const containerRef = useRef<HTMLDivElement>(null)
+  const spacePressed = useRef(false)
+  const cardClipboard = useRef<{ cards: CanvasCard[]; edges: CanvasEdge[] } | null>(null)
   const drag = useRef<
     | { kind: "pan"; startX: number; startY: number; origX: number; origY: number }
-    | { kind: "card"; cardId: string; startX: number; startY: number; origX: number; origY: number; moved: boolean }
+    | {
+        kind: "card"
+        cardId: string
+        cardIds: string[]
+        startX: number
+        startY: number
+        origPositions: Record<string, { x: number; y: number }>
+        moved: boolean
+      }
+    | { kind: "select"; startX: number; startY: number; moved: boolean }
     | null
   >(null)
 
@@ -509,7 +548,16 @@ export default function Page() {
   // ---- 指针事件：背景平移 / 卡片拖动 ----
   const onBackgroundPointerDown = (e: React.PointerEvent) => {
     if (e.target !== e.currentTarget) return
-    drag.current = { kind: "pan", startX: e.clientX, startY: e.clientY, origX: view.x, origY: view.y }
+    if (e.button === 1 || spacePressed.current) {
+      e.preventDefault()
+      drag.current = { kind: "pan", startX: e.clientX, startY: e.clientY, origX: view.x, origY: view.y }
+    } else {
+      setConnectSourceCardId(null)
+      setConnectionLabel("")
+      drag.current = { kind: "select", startX: e.clientX, startY: e.clientY, moved: false }
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (rect) setSelectionBox(selectionRectFromPoints(e.clientX - rect.left, e.clientY - rect.top, e.clientX - rect.left, e.clientY - rect.top))
+    }
     ;(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId)
   }
 
@@ -517,13 +565,25 @@ export default function Page() {
     e.stopPropagation()
     const card = cards.find((c) => c.id === cardId)
     if (!card) return
+    if (e.button === 1 || spacePressed.current) {
+      e.preventDefault()
+      drag.current = { kind: "pan", startX: e.clientX, startY: e.clientY, origX: view.x, origY: view.y }
+      containerRef.current?.setPointerCapture(e.pointerId)
+      return
+    }
+    const cardIds = selected.has(cardId) && selected.size > 1 ? Array.from(selected) : [cardId]
+    const origPositions = Object.fromEntries(
+      cards
+        .filter((item) => cardIds.includes(item.id))
+        .map((item) => [item.id, { x: item.x, y: item.y }]),
+    )
     drag.current = {
       kind: "card",
       cardId,
+      cardIds,
       startX: e.clientX,
       startY: e.clientY,
-      origX: card.x,
-      origY: card.y,
+      origPositions,
       moved: false,
     }
     containerRef.current?.setPointerCapture(e.pointerId)
@@ -536,10 +596,19 @@ export default function Page() {
     const dy = e.clientY - d.startY
     if (d.kind === "pan") {
       setView((v) => ({ ...v, x: d.origX + dx, y: d.origY + dy }))
+    } else if (d.kind === "select") {
+      if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true
+      const rect = containerRef.current?.getBoundingClientRect()
+      if (rect) setSelectionBox(selectionRectFromPoints(d.startX - rect.left, d.startY - rect.top, e.clientX - rect.left, e.clientY - rect.top))
     } else {
       if (Math.abs(dx) + Math.abs(dy) > 3) d.moved = true
       setCards((cs) =>
-        cs.map((c) => (c.id === d.cardId ? { ...c, x: d.origX + dx / view.zoom, y: d.origY + dy / view.zoom } : c)),
+        cs.map((card) => {
+          const origin = d.origPositions[card.id]
+          return origin && d.cardIds.includes(card.id)
+            ? { ...card, x: origin.x + dx / view.zoom, y: origin.y + dy / view.zoom }
+            : card
+        }),
       )
     }
   }
@@ -548,6 +617,33 @@ export default function Page() {
     const d = drag.current
     drag.current = null
     if (!d) return
+    if (d.kind === "select") {
+      const rect = containerRef.current?.getBoundingClientRect()
+      const box = rect
+        ? selectionRectFromPoints(d.startX - rect.left, d.startY - rect.top, e.clientX - rect.left, e.clientY - rect.top)
+        : selectionBox
+      setSelectionBox(null)
+      if (!d.moved || !rect || !box) {
+        setSelected(new Set())
+        setConnectSourceCardId(null)
+        setConnectionLabel("")
+        return
+      }
+      const next = new Set(
+        cards
+          .filter((card) => {
+            const bounds = cardScreenBounds(card, { x: view.x, y: view.y, zoom: view.zoom })
+            return bounds.left < box.left + box.width && bounds.right > box.left && bounds.top < box.top + box.height && bounds.bottom > box.top
+          })
+          .map((card) => card.id),
+      )
+      if (e.shiftKey || e.metaKey || e.ctrlKey) {
+        setSelected((current) => new Set([...current, ...next]))
+      } else {
+        setSelected(next)
+      }
+      return
+    }
     if (d.kind === "card" && !d.moved) {
       if (connectSourceCardId) {
         if (connectSourceCardId === d.cardId) {
@@ -563,8 +659,9 @@ export default function Page() {
       }
       // 视为点击：切换选中（shift 累加）
       setSelected((s) => {
-        const next = e.shiftKey ? new Set(s) : new Set<string>()
-        if (s.has(d.cardId) && e.shiftKey) next.delete(d.cardId)
+        const additive = e.shiftKey || e.metaKey || e.ctrlKey
+        const next = additive ? new Set(s) : new Set<string>()
+        if (s.has(d.cardId) && additive) next.delete(d.cardId)
         else next.add(d.cardId)
         return next
       })
@@ -588,6 +685,39 @@ export default function Page() {
       return { zoom: nextZoom, x: px - (px - v.x) * scale, y: py - (py - v.y) * scale }
     })
   }
+
+  const adjustZoom = useCallback((factor: number) => {
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect) return
+    const px = rect.width / 2
+    const py = rect.height / 2
+    setView((current) => {
+      const nextZoom = Math.min(2.5, Math.max(0.3, current.zoom * factor))
+      const scale = nextZoom / current.zoom
+      return { zoom: nextZoom, x: px - (px - current.x) * scale, y: py - (py - current.y) * scale }
+    })
+  }, [])
+
+  const fitCanvas = useCallback(() => {
+    const rect = containerRef.current?.getBoundingClientRect()
+    if (!rect || cards.length === 0) {
+      setView({ x: 0, y: 0, zoom: 1 })
+      return
+    }
+    const padding = 96
+    const minX = Math.min(...cards.map((card) => card.x))
+    const minY = Math.min(...cards.map((card) => card.y))
+    const maxX = Math.max(...cards.map((card) => card.x + (card.fold === 0 ? 170 : 240)))
+    const maxY = Math.max(...cards.map((card) => card.y + (card.fold === 0 ? 36 : 230)))
+    const contentWidth = Math.max(1, maxX - minX)
+    const contentHeight = Math.max(1, maxY - minY)
+    const zoom = Math.min(2.5, Math.max(0.3, Math.min((rect.width - padding * 2) / contentWidth, (rect.height - padding * 2) / contentHeight)))
+    setView({
+      zoom,
+      x: rect.width / 2 - ((minX + maxX) / 2) * zoom,
+      y: rect.height / 2 - ((minY + maxY) / 2) * zoom,
+    })
+  }, [cards])
 
   const toggleFold = (cardId: string) =>
     setCards((cs) => cs.map((c) => (c.id === cardId ? { ...c, fold: c.fold === 0 ? 1 : 0 } : c)))
@@ -621,6 +751,42 @@ export default function Page() {
     showNotice(`已删除 ${ids.size} 张卡片`)
   }, [selected, showNotice])
 
+  const nudgeSelectedCards = useCallback((dx: number, dy: number) => {
+    if (selected.size === 0) return
+    setCards((current) =>
+      current.map((card) => (selected.has(card.id) ? { ...card, x: card.x + dx, y: card.y + dy } : card)),
+    )
+  }, [selected])
+
+  const cloneCards = useCallback(
+    (sourceCards: CanvasCard[], sourceEdges: CanvasEdge[]) => {
+      if (sourceCards.length === 0) return
+      const idMap = new Map(sourceCards.map((card) => [card.id, `card-${++cardSeq}`]))
+      const clones = sourceCards.map((card) => ({
+        ...card,
+        id: idMap.get(card.id) ?? `card-${++cardSeq}`,
+        x: card.x + 32,
+        y: card.y + 32,
+      }))
+      const clonedEdges = sourceEdges.map((edge) => ({
+        ...edge,
+        id: `edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        fromCardId: idMap.get(edge.fromCardId) ?? edge.fromCardId,
+        toCardId: idMap.get(edge.toCardId) ?? edge.toCardId,
+      }))
+      setCards((current) => [...current, ...clones])
+      setEdges((current) => [...current, ...clonedEdges])
+      setSelected(new Set(clones.map((card) => card.id)))
+      showNotice(`已复制 ${clones.length} 张卡片`)
+    },
+    [showNotice],
+  )
+
+  const duplicateSelectedCards = useCallback(() => {
+    const sourceCards = cards.filter((card) => selected.has(card.id))
+    cloneCards(sourceCards, edges.filter((edge) => selected.has(edge.fromCardId) && selected.has(edge.toCardId)))
+  }, [cards, cloneCards, edges, selected])
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null
@@ -646,13 +812,99 @@ export default function Page() {
       }
       if (event.key === "Escape") {
         setQuickAddOpen(false)
+        setDialog(null)
         setConnectSourceCardId(null)
         setConnectionLabel("")
+        setSelectionBox(null)
       }
     }
     window.addEventListener("keydown", onKeyDown)
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const isTyping = target?.isContentEditable || target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT"
+      if (isTyping) return
+
+      if (event.code === "Space") {
+        event.preventDefault()
+        spacePressed.current = true
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "a") {
+        event.preventDefault()
+        setSelected(new Set(cards.map((card) => card.id)))
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "d" && selected.size > 0) {
+        event.preventDefault()
+        duplicateSelectedCards()
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c" && selected.size > 0) {
+        event.preventDefault()
+        const copiedCards = cards.filter((card) => selected.has(card.id))
+        cardClipboard.current = {
+          cards: copiedCards,
+          edges: edges.filter((edge) => selected.has(edge.fromCardId) && selected.has(edge.toCardId)),
+        }
+        showNotice(`已复制 ${copiedCards.length} 张卡片`)
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "v" && cardClipboard.current) {
+        event.preventDefault()
+        cloneCards(cardClipboard.current.cards, cardClipboard.current.edges)
+        return
+      }
+      if (event.key === "+" || event.key === "=") {
+        event.preventDefault()
+        adjustZoom(1.15)
+        return
+      }
+      if (event.key === "-") {
+        event.preventDefault()
+        adjustZoom(0.87)
+        return
+      }
+      if (event.key === "0") {
+        event.preventDefault()
+        fitCanvas()
+        return
+      }
+      if (selected.size > 0) {
+        const step = event.shiftKey ? 10 : 2
+        if (event.key === "ArrowUp") {
+          event.preventDefault()
+          nudgeSelectedCards(0, -step)
+        } else if (event.key === "ArrowDown") {
+          event.preventDefault()
+          nudgeSelectedCards(0, step)
+        } else if (event.key === "ArrowLeft") {
+          event.preventDefault()
+          nudgeSelectedCards(-step, 0)
+        } else if (event.key === "ArrowRight") {
+          event.preventDefault()
+          nudgeSelectedCards(step, 0)
+        }
+      }
+    }
+    const onKeyUp = (event: KeyboardEvent) => {
+      if (event.code === "Space") spacePressed.current = false
+    }
+    const onBlur = () => {
+      spacePressed.current = false
+    }
+    window.addEventListener("keydown", onKeyDown)
+    window.addEventListener("keyup", onKeyUp)
+    window.addEventListener("blur", onBlur)
+    return () => {
+      window.removeEventListener("keydown", onKeyDown)
+      window.removeEventListener("keyup", onKeyUp)
+      window.removeEventListener("blur", onBlur)
+    }
+  }, [adjustZoom, cards, cloneCards, duplicateSelectedCards, edges, fitCanvas, nudgeSelectedCards, selected.size, showNotice])
 
   const removeEdge = useCallback(
     (edgeId: string) => {
@@ -764,6 +1016,9 @@ export default function Page() {
         canvasList={canvasList}
         zoom={view.zoom}
         onResetView={() => setView({ x: 0, y: 0, zoom: 1 })}
+        onZoomIn={() => adjustZoom(1.15)}
+        onZoomOut={() => adjustZoom(0.87)}
+        onFitCanvas={fitCanvas}
         onSwitchCanvas={switchCanvas}
         onCreateCanvas={createCanvas}
         onRenameCanvas={renameCanvas}
@@ -806,6 +1061,7 @@ export default function Page() {
         onPointerDown={onBackgroundPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
+        onPointerCancel={onPointerUp}
         onWheel={onWheel}
         onDragEnter={(event) => {
           event.preventDefault()
@@ -814,7 +1070,7 @@ export default function Page() {
         onDragOver={(event) => event.preventDefault()}
         onDragLeave={onCanvasDragLeave}
         onDrop={onCanvasDrop}
-        className={`canvas-paper h-full w-full cursor-grab touch-none active:cursor-grabbing ${
+        className={`canvas-paper relative h-full w-full cursor-grab touch-none active:cursor-grabbing ${
           isDropTarget ? "ring-2 ring-inset ring-accent/45" : ""
         }`}
         style={{
@@ -884,6 +1140,18 @@ export default function Page() {
             ))}
           </div>
         </div>
+        {selectionBox && (
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute z-10 rounded border border-accent/70 bg-accent/10"
+            style={{
+              left: selectionBox.left,
+              top: selectionBox.top,
+              width: selectionBox.width,
+              height: selectionBox.height,
+            }}
+          />
+        )}
 
         {/* 空画布引导 */}
         {cards.length === 0 && (
@@ -900,7 +1168,7 @@ export default function Page() {
         )}
         {cards.length > 0 && selectedCards.length === 0 && !quickAddOpen && (
           <div className="pointer-events-none fixed bottom-5 left-5 z-10 rounded-full border border-faint/80 bg-surface/80 px-3 py-2 text-[10px] text-muted backdrop-blur-sm">
-            拖入素材 · Ctrl/⌘ K 添加 · Shift 多选
+            拖入素材 · 空白拖拽框选 · Shift/Ctrl 多选 · Space 平移
           </div>
         )}
       </div>
