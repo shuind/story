@@ -28,7 +28,9 @@ app/
   globals.css           全部设计令牌（纸、墨、朱砂 accent）与画布网格样式
   page.tsx              主页面：画布状态机（平移/缩放/拖卡/选中）
   api/library/route.ts  从 library/ 读取 Markdown 和 frontmatter
-  api/library/save/     将编辑后的正文写回 library/ 文件
+  api/library/save/     将编辑后的正文写回并 SSH commit/push
+  api/library/plugin/   创建新的 Plugin 目录并 SSH commit/push
+  api/library/element/  创建新的 Element Markdown 并 SSH commit/push
 components/
   top-bar.tsx           顶栏：画布切换、缩放、导入、导出
   library-sidebar.tsx   左侧 Library：搜索、插件分组、元素列表 —— 占位：新维度
@@ -84,7 +86,7 @@ summary: 雾、煤气灯、报童、薪水、阶级、教会……
 （正文 markdown）
 \`\`\`
 
-新增维度时，在 `library/` 下新增目录，并放入 `_plugin.md` 元数据文件与元素 Markdown 文件即可。保存接口会拒绝目录外路径和 `_plugin.md` 元数据文件。
+侧栏「+ 新维度」可以创建目录和 `_plugin.md` 元数据；每个维度旁的 `+` 可以创建 Element Markdown。两者都会立即通过 SSH commit/push。保存接口会拒绝目录外路径和 `_plugin.md` 元数据文件。
 
 > 类型契约已在 `lib/types.ts` 固定：只要 API 返回同形状数据，UI 无需改动。
 

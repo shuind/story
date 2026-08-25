@@ -57,26 +57,23 @@ export default function Page() {
     | null
   >(null)
 
-  useEffect(() => {
-    let cancelled = false
-    fetch("/api/library", { cache: "no-store" })
-      .then(async (response) => {
-        if (!response.ok) throw new Error("素材库读取失败")
-        return (await response.json()) as PluginDef[]
-      })
-      .then((data) => {
-        if (!cancelled) setLibrary(data)
-      })
-      .catch((error) => {
-        if (!cancelled) setLibraryError(error instanceof Error ? error.message : "素材库读取失败")
-      })
-      .finally(() => {
-        if (!cancelled) setLibraryLoading(false)
-      })
-    return () => {
-      cancelled = true
+  const refreshLibrary = useCallback(async () => {
+    setLibraryLoading(true)
+    setLibraryError(null)
+    try {
+      const response = await fetch("/api/library", { cache: "no-store" })
+      if (!response.ok) throw new Error("素材库读取失败")
+      setLibrary((await response.json()) as PluginDef[])
+    } catch (error) {
+      setLibraryError(error instanceof Error ? error.message : "素材库读取失败")
+    } finally {
+      setLibraryLoading(false)
     }
   }, [])
+
+  useEffect(() => {
+    void refreshLibrary()
+  }, [refreshLibrary])
 
   useEffect(() => {
     try {
@@ -133,6 +130,48 @@ export default function Page() {
     setNotice(message)
     window.setTimeout(() => setNotice(null), 2400)
   }, [])
+
+  const createPlugin = useCallback(async () => {
+    const name = window.prompt("新维度名称")?.trim()
+    if (!name) return
+    const description = window.prompt("维度说明（可选）")?.trim() ?? ""
+    try {
+      const response = await fetch("/api/library/plugin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, description }),
+      })
+      const result = (await response.json()) as { error?: string }
+      if (!response.ok) throw new Error(result.error ?? "维度创建失败")
+      await refreshLibrary()
+      showNotice(`已创建「${name}」`)
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : "维度创建失败")
+    }
+  }, [refreshLibrary, showNotice])
+
+  const createElement = useCallback(
+    async (plugin: PluginDef) => {
+      const title = window.prompt(`在「${plugin.name}」中新建元素`)?.trim()
+      if (!title) return
+      const summary = window.prompt("元素摘要（可选）")?.trim() ?? ""
+      try {
+        const response = await fetch("/api/library/element", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ pluginId: plugin.id, title, summary }),
+        })
+        const result = (await response.json()) as { error?: string }
+        if (!response.ok) throw new Error(result.error ?? "元素创建失败")
+        await refreshLibrary()
+        setReaderElementId(`${plugin.id}/${title.replace(/\.md$/i, "")}`)
+        showNotice(`已创建「${title}」`)
+      } catch (error) {
+        showNotice(error instanceof Error ? error.message : "元素创建失败")
+      }
+    },
+    [refreshLibrary, showNotice],
+  )
 
   const switchCanvas = useCallback(
     (nextId: string) => {
@@ -375,6 +414,8 @@ export default function Page() {
         library={library}
         loading={libraryLoading}
         error={libraryError}
+        onCreatePlugin={createPlugin}
+        onCreateElement={createElement}
       />
 
       {/* 无限画布 */}

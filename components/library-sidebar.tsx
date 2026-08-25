@@ -11,13 +11,25 @@ interface Props {
   library: PluginDef[]
   loading: boolean
   error: string | null
+  onCreatePlugin: () => void
+  onCreateElement: (plugin: PluginDef) => void
 }
 
 /**
  * Library 侧栏：搜索 / 按插件浏览 / 放上画布。
  * 默认完全收起，只留一枚墨点开关 —— 呼吸感的第一层。
  */
-export function LibrarySidebar({ open, onToggle, onPlace, onOpenReader, library, loading, error }: Props) {
+export function LibrarySidebar({
+  open,
+  onToggle,
+  onPlace,
+  onOpenReader,
+  library,
+  loading,
+  error,
+  onCreatePlugin,
+  onCreateElement,
+}: Props) {
   const [query, setQuery] = useState("")
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
@@ -77,18 +89,29 @@ export function LibrarySidebar({ open, onToggle, onPlace, onOpenReader, library,
             const isOpen = expanded[plugin.id] ?? query.trim().length > 0
             return (
               <div key={plugin.id} className="mb-1">
-                <button
-                  type="button"
-                  onClick={() => setExpanded((s) => ({ ...s, [plugin.id]: !isOpen }))}
-                  className="flex w-full items-baseline gap-2 rounded px-2 py-2 text-left hover:bg-faint/50"
-                >
-                  <span
-                    className={`shrink-0 whitespace-nowrap font-serif text-sm font-semibold ${isOpen ? "text-accent" : ""}`}
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setExpanded((s) => ({ ...s, [plugin.id]: !isOpen }))}
+                    className="flex min-w-0 flex-1 items-baseline gap-2 rounded px-2 py-2 text-left hover:bg-faint/50"
                   >
-                    {plugin.name}
-                  </span>
-                  <span className="truncate text-[11px] text-muted">{plugin.description}</span>
-                </button>
+                    <span
+                      className={`shrink-0 whitespace-nowrap font-serif text-sm font-semibold ${isOpen ? "text-accent" : ""}`}
+                    >
+                      {plugin.name}
+                    </span>
+                    <span className="truncate text-[11px] text-muted">{plugin.description}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => onCreateElement(plugin)}
+                    aria-label={`在${plugin.name}中新建元素`}
+                    title="新建元素"
+                    className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-base text-muted hover:bg-faint/50 hover:text-accent"
+                  >
+                    +
+                  </button>
+                </div>
 
                 {isOpen && (
                   <ul className="mb-2 ml-2 border-l border-faint pl-3">
@@ -118,10 +141,9 @@ export function LibrarySidebar({ open, onToggle, onPlace, onOpenReader, library,
             )
           })}
 
-          {/* 新建插件 —— 占位，未接入 */}
           <button
             type="button"
-            title="骨架阶段未接入：将创建 library/ 下的新目录"
+            onClick={onCreatePlugin}
             className="mt-4 w-full rounded border border-dashed border-faint px-2 py-2 text-center text-xs text-muted hover:border-accent/40 hover:text-accent"
           >
             + 新维度
