@@ -843,9 +843,6 @@ export default function Page() {
     })
   }, [cards])
 
-  const toggleFold = (cardId: string) =>
-    setCards((cs) => cs.map((c) => (c.id === cardId ? { ...c, fold: c.fold === 0 ? 1 : 0 } : c)))
-
   const removeCard = (cardId: string) => {
     setCards((cs) => cs.filter((c) => c.id !== cardId))
     setEdges((current) => current.filter((edge) => edge.fromCardId !== cardId && edge.toCardId !== cardId))
@@ -1241,15 +1238,12 @@ export default function Page() {
                       note={card.note}
                       selected={selected.has(card.id)}
                       onPointerDown={onCardPointerDown}
-                      onToggleFold={toggleFold}
                       onUpdateNote={updateCardNote}
                       onOpenReader={() => {
                         setReaderElementId(null)
                         setReaderPluginId(plugin.id)
                       }}
                       readerLabel="读维度"
-                      onConnect={() => startCardConnection(card.id)}
-                      connectLabel={connectSourceCardId === card.id ? "起点已选" : "连线"}
                       onRemove={removeCard}
                     />
                   )
@@ -1267,14 +1261,11 @@ export default function Page() {
                     note={card.note}
                     selected={selected.has(card.id)}
                     onPointerDown={onCardPointerDown}
-                    onToggleFold={toggleFold}
                     onUpdateNote={updateCardNote}
                     onOpenReader={() => {
                       setReaderPluginId(null)
                       setReaderElementId(result.element.id)
                     }}
-                    onConnect={() => startCardConnection(card.id)}
-                    connectLabel={connectSourceCardId === card.id ? "起点已选" : "连线"}
                     onRemove={removeCard}
                   />
                 )

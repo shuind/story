@@ -11,12 +11,9 @@ interface Props {
   note: string
   selected: boolean
   onPointerDown: (e: React.PointerEvent, cardId: string) => void
-  onToggleFold: (cardId: string) => void
   onUpdateNote: (cardId: string, note: string) => void
   onOpenReader?: () => void
   readerLabel?: string
-  onConnect?: () => void
-  connectLabel?: string
   onRemove: (cardId: string) => void
 }
 
@@ -34,12 +31,9 @@ export function CanvasCardView({
   note,
   selected,
   onPointerDown,
-  onToggleFold,
   onUpdateNote,
   onOpenReader,
   readerLabel = "全文",
-  onConnect,
-  connectLabel = "连线",
   onRemove,
 }: Props) {
   return (
@@ -90,7 +84,7 @@ export function CanvasCardView({
               className="w-full cursor-text resize-y rounded border border-faint bg-background/50 px-2 py-1.5 text-xs leading-5 text-foreground outline-none placeholder:text-muted/50 focus:border-accent"
             />
           </div>
-          <div className="mt-2.5 flex items-center gap-3">
+          <div className="mt-5 flex items-center justify-between pt-1">
             {onOpenReader && (
               <button
                 type="button"
@@ -104,30 +98,6 @@ export function CanvasCardView({
                 {readerLabel}
               </button>
             )}
-            {onConnect && (
-              <button
-                type="button"
-                onPointerDown={(event) => event.stopPropagation()}
-                onClick={(event) => {
-                  event.stopPropagation()
-                  onConnect()
-                }}
-                className="text-[11px] text-muted hover:text-accent"
-              >
-                {connectLabel}
-              </button>
-            )}
-            <button
-              type="button"
-              onPointerDown={(event) => event.stopPropagation()}
-              onClick={(event) => {
-                event.stopPropagation()
-                onToggleFold(card.id)
-              }}
-              className="text-[11px] text-muted hover:text-foreground"
-            >
-              收起
-            </button>
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
@@ -135,7 +105,7 @@ export function CanvasCardView({
                 e.stopPropagation()
                 onRemove(card.id)
               }}
-              className="ml-auto text-[11px] text-muted hover:text-accent"
+              className="text-[11px] text-muted hover:text-accent"
             >
               移除
             </button>
