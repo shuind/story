@@ -242,10 +242,6 @@ export function QuickAddPanel({ open, library, onClose, onAddPlugin, onAddElemen
           )}
         </div>
 
-        <footer className="flex items-center justify-between border-t border-faint px-4 py-2 text-[10px] text-muted">
-          <span>↑ ↓ 选择 · ← → 展开/收起 · Enter 添加</span>
-          <span>Plugin 是文件夹，Element 在里面</span>
-        </footer>
       </section>
     </>
   )
