@@ -123,6 +123,9 @@ export function parseCanvasSnapshot(value: unknown): CanvasSnapshot {
       id: item.id,
       kind,
       targetId,
+      note: typeof (item as Partial<CanvasCard> & { note?: unknown }).note === "string"
+        ? (item as Partial<CanvasCard> & { note?: string }).note ?? ""
+        : "",
       x: item.x,
       y: item.y,
       fold: item.fold,
@@ -194,16 +197,34 @@ export function getCanvasCardElements(library: PluginDef[], card: CanvasCard) {
   return result ? [result] : []
 }
 
+export function getCanvasCardTitle(library: PluginDef[], card: CanvasCard) {
+  if (card.kind === "plugin") return library.find((plugin) => plugin.id === card.targetId)?.name ?? card.targetId
+  return findLibraryElement(library, card.targetId)?.element.title ?? card.targetId
+}
+
 export function canvasToMarkdown(snapshot: CanvasSnapshot, library: PluginDef[]) {
   const seen = new Set<string>()
-  const sections = snapshot.canvas.cards
-    .flatMap((card) => getCanvasCardElements(library, card))
-    .filter(({ element }) => {
+  const sections = snapshot.canvas.cards.flatMap((card) => {
+    const elements = getCanvasCardElements(library, card).filter(({ element }) => {
       if (seen.has(element.id)) return false
       seen.add(element.id)
       return true
     })
-    .map(({ element, plugin }) => `## ${element.title}（${plugin.name}）\n\n${element.content.trim()}`)
+    const note = card.note.trim() ? `## 画布思考：${getCanvasCardTitle(library, card)}\n\n${card.note.trim()}` : ""
+    const content = elements.map(({ element, plugin }) => `## ${element.title}（${plugin.name}）\n\n${element.content.trim()}`)
+    return [note, ...content].filter(Boolean)
+  })
+
+  const cardById = new Map(snapshot.canvas.cards.map((card) => [card.id, card]))
+  const relations = snapshot.canvas.edges
+    .map((edge) => {
+      const from = cardById.get(edge.fromCardId)
+      const to = cardById.get(edge.toCardId)
+      if (!from || !to) return ""
+      return `- ${getCanvasCardTitle(library, from)} --[${edge.label || "关联"}]→ ${getCanvasCardTitle(library, to)}`
+    })
+    .filter(Boolean)
+  if (relations.length > 0) sections.push(`## 卡片关系\n\n${relations.join("\n")}`)
 
   return [`# ${snapshot.canvas.name}`, "", ...sections.flatMap((section) => [section, "", "---", ""])]
     .join("\n")

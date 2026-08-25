@@ -1,5 +1,6 @@
 "use client"
 
+import type React from "react"
 import { useMemo, useState } from "react"
 import type { ElementDoc, PluginDef } from "@/lib/types"
 
@@ -9,6 +10,7 @@ interface Props {
   onPlace: (el: ElementDoc) => void
   onPlacePlugin: (plugin: PluginDef) => void
   onOpenReader: (el: ElementDoc) => void
+  onOpenPlugin: (plugin: PluginDef) => void
   library: PluginDef[]
   loading: boolean
   error: string | null
@@ -26,6 +28,7 @@ export function LibrarySidebar({
   onPlace,
   onPlacePlugin,
   onOpenReader,
+  onOpenPlugin,
   library,
   loading,
   error,
@@ -35,6 +38,11 @@ export function LibrarySidebar({
   const [query, setQuery] = useState("")
   const [tagFilter, setTagFilter] = useState("")
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
+
+  const startDrag = (event: React.DragEvent, kind: "plugin" | "element", targetId: string) => {
+    event.dataTransfer.effectAllowed = "copy"
+    event.dataTransfer.setData("application/x-story-library", JSON.stringify({ kind, targetId }))
+  }
 
   const tags = useMemo(
     () =>
@@ -123,6 +131,8 @@ export function LibrarySidebar({
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
+                    draggable
+                    onDragStart={(event) => startDrag(event, "plugin", plugin.id)}
                     onClick={() => setExpanded((s) => ({ ...s, [plugin.id]: !isOpen }))}
                     className="flex min-w-0 flex-1 items-baseline gap-2 rounded px-2 py-2 text-left hover:bg-faint/50"
                   >
@@ -144,6 +154,15 @@ export function LibrarySidebar({
                   </button>
                   <button
                     type="button"
+                    onClick={() => onOpenPlugin(plugin)}
+                    aria-label={`阅读${plugin.name}`}
+                    title="阅读维度"
+                    className="flex h-7 shrink-0 items-center justify-center rounded px-1.5 text-[11px] text-muted hover:bg-faint/50 hover:text-accent"
+                  >
+                    读
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => onCreateElement(plugin)}
                     aria-label={`在${plugin.name}中新建元素`}
                     title="新建元素"
@@ -159,6 +178,8 @@ export function LibrarySidebar({
                       <li key={el.id} className="group flex items-center gap-1 py-1">
                         <button
                           type="button"
+                          draggable
+                          onDragStart={(event) => startDrag(event, "element", el.id)}
                           onClick={() => onPlace(el)}
                           title="放上画布"
                           className="flex-1 truncate text-left text-[13px] leading-6 text-foreground/85 hover:text-accent"
@@ -192,7 +213,7 @@ export function LibrarySidebar({
 
         <div className="border-t border-faint px-5 py-3">
           <p className="text-[11px] leading-5 text-muted">
-            维度点「放」· 点击元素放上画布 · 点「读」直达全文
+            拖维度/元素到画布，或点击「放」· 点「读」查看内容
           </p>
         </div>
       </aside>

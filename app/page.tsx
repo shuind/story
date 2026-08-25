@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { LibrarySidebar } from "@/components/library-sidebar"
 import { CanvasCardView } from "@/components/canvas-card"
 import { ReaderDrawer } from "@/components/reader-drawer"
+import { PluginDrawer } from "@/components/plugin-drawer"
 import { TopBar } from "@/components/top-bar"
 import { ProjectionBar } from "@/components/projection-bar"
 import { PathPanel } from "@/components/path-panel"
@@ -68,9 +69,12 @@ export default function Page() {
   const [cards, setCards] = useState<CanvasCard[]>([])
   const [edges, setEdges] = useState<CanvasEdge[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
+  const [connectSourceCardId, setConnectSourceCardId] = useState<string | null>(null)
+  const [isDropTarget, setIsDropTarget] = useState(false)
   // ---- UI ----
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [readerElementId, setReaderElementId] = useState<string | null>(null)
+  const [readerPluginId, setReaderPluginId] = useState<string | null>(null)
   const [library, setLibrary] = useState<PluginDef[]>([])
   const [libraryLoading, setLibraryLoading] = useState(true)
   const [libraryError, setLibraryError] = useState<string | null>(null)
@@ -260,6 +264,11 @@ export default function Page() {
     [library, readerElementId],
   )
 
+  const readerPlugin = useMemo(
+    () => (readerPluginId ? library.find((plugin) => plugin.id === readerPluginId) ?? null : null),
+    [library, readerPluginId],
+  )
+
   const saveElement = useCallback(async (element: ElementDoc, content: string) => {
     const response = await fetch("/api/library/save", {
       method: "POST",
@@ -391,12 +400,12 @@ export default function Page() {
     [canvasId, showNotice],
   )
 
-  // Library 项目 → 放到当前视野中心
+  // Library 项目 → 点击时放到视野中心，拖拽时放到指针位置
   const placeLibraryItem = useCallback(
-    (kind: CanvasCardKind, targetId: string) => {
+    (kind: CanvasCardKind, targetId: string, clientX?: number, clientY?: number) => {
       const rect = containerRef.current?.getBoundingClientRect()
-      const cx = rect ? rect.width / 2 : 500
-      const cy = rect ? rect.height / 2 : 350
+      const cx = clientX !== undefined && rect ? clientX - rect.left : rect ? rect.width / 2 : 500
+      const cy = clientY !== undefined && rect ? clientY - rect.top : rect ? rect.height / 2 : 350
       const worldX = (cx - view.x) / view.zoom
       const worldY = (cy - view.y) / view.zoom
       setCards((cs) => [
@@ -405,6 +414,7 @@ export default function Page() {
           id: `card-${++cardSeq}`,
           kind,
           targetId,
+          note: "",
           x: worldX - 60 + (cs.length % 5) * 24,
           y: worldY - 20 + (cs.length % 5) * 24,
           fold: 0,
@@ -416,6 +426,30 @@ export default function Page() {
 
   const placeElement = useCallback((element: ElementDoc) => placeLibraryItem("element", element.id), [placeLibraryItem])
   const placePlugin = useCallback((plugin: PluginDef) => placeLibraryItem("plugin", plugin.id), [placeLibraryItem])
+
+  const onCanvasDrop = useCallback(
+    (event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      setIsDropTarget(false)
+      const raw = event.dataTransfer.getData("application/x-story-library")
+      if (!raw) return
+      try {
+        const item = JSON.parse(raw) as { kind?: CanvasCardKind; targetId?: string }
+        if ((item.kind !== "element" && item.kind !== "plugin") || !item.targetId) return
+        placeLibraryItem(item.kind, item.targetId, event.clientX, event.clientY)
+      } catch {
+        // Ignore unrelated browser drops.
+      }
+    },
+    [placeLibraryItem],
+  )
+
+  const onCanvasDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+    const nextTarget = event.relatedTarget
+    if (!(nextTarget instanceof Node) || !event.currentTarget.contains(nextTarget)) {
+      setIsDropTarget(false)
+    }
+  }, [])
 
   // ---- 指针事件：背景平移 / 卡片拖动 ----
   const onBackgroundPointerDown = (e: React.PointerEvent) => {
@@ -497,7 +531,37 @@ export default function Page() {
       next.delete(cardId)
       return next
     })
+    if (connectSourceCardId === cardId) setConnectSourceCardId(null)
   }
+
+  const updateCardNote = useCallback((cardId: string, note: string) => {
+    setCards((current) => current.map((card) => (card.id === cardId ? { ...card, note } : card)))
+  }, [])
+
+  const removeSelectedCards = useCallback(() => {
+    if (selected.size === 0) return
+    const ids = new Set(selected)
+    setCards((current) => current.filter((card) => !ids.has(card.id)))
+    setEdges((current) => current.filter((edge) => !ids.has(edge.fromCardId) && !ids.has(edge.toCardId)))
+    setSelected(new Set())
+    setConnectSourceCardId(null)
+    showNotice(`已删除 ${ids.size} 张卡片`)
+  }, [selected, showNotice])
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      if (target?.isContentEditable || target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT") {
+        return
+      }
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault()
+        removeSelectedCards()
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [removeSelectedCards])
 
   const removeEdge = useCallback(
     (edgeId: string) => {
@@ -510,31 +574,56 @@ export default function Page() {
   const selectedCards = cards.filter((card) => selected.has(card.id))
   const selectedCardIds = selectedCards.map((card) => card.id)
 
+  const connectCards = useCallback(
+    (fromCardId: string, toCardId: string) => {
+      if (fromCardId === toCardId) return
+      const label = window.prompt("关系标签（可选）", "关系")
+      if (label === null) return
+      const exists = edges.some(
+        (edge) =>
+          (edge.fromCardId === fromCardId && edge.toCardId === toCardId) ||
+          (edge.fromCardId === toCardId && edge.toCardId === fromCardId),
+      )
+      if (exists) {
+        showNotice("这两张卡片已经有连线")
+        return
+      }
+      setEdges((current) => [
+        ...current,
+        {
+          id: `edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+          fromCardId,
+          toCardId,
+          label: label.trim(),
+        },
+      ])
+      showNotice("已建立连线")
+    },
+    [edges, showNotice],
+  )
+
   const connectSelectedCards = useCallback(() => {
     if (selectedCardIds.length !== 2) return
-    const label = window.prompt("关系标签（可选）", "关系")
-    if (label === null) return
     const [fromCardId, toCardId] = selectedCardIds
-    const exists = edges.some(
-      (edge) =>
-        (edge.fromCardId === fromCardId && edge.toCardId === toCardId) ||
-        (edge.fromCardId === toCardId && edge.toCardId === fromCardId),
-    )
-    if (exists) {
-      showNotice("这两张卡片已经有连线")
-      return
-    }
-    setEdges((current) => [
-      ...current,
-      {
-        id: `edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-        fromCardId,
-        toCardId,
-        label: label.trim(),
-      },
-    ])
-    showNotice("已建立连线")
-  }, [edges, selectedCardIds, showNotice])
+    connectCards(fromCardId, toCardId)
+  }, [connectCards, selectedCardIds])
+
+  const startCardConnection = useCallback(
+    (cardId: string) => {
+      if (!connectSourceCardId) {
+        setConnectSourceCardId(cardId)
+        showNotice("已选起点，再点击另一张卡片的「连线」")
+        return
+      }
+      if (connectSourceCardId === cardId) {
+        setConnectSourceCardId(null)
+        return
+      }
+      connectCards(connectSourceCardId, cardId)
+      setConnectSourceCardId(null)
+    },
+    [connectCards, connectSourceCardId, showNotice],
+  )
 
   return (
     <main className="h-screen w-screen overflow-hidden">
@@ -564,7 +653,14 @@ export default function Page() {
         onToggle={() => setSidebarOpen((o) => !o)}
         onPlace={placeElement}
         onPlacePlugin={placePlugin}
-        onOpenReader={(el) => setReaderElementId(el.id)}
+        onOpenReader={(el) => {
+          setReaderPluginId(null)
+          setReaderElementId(el.id)
+        }}
+        onOpenPlugin={(plugin) => {
+          setReaderElementId(null)
+          setReaderPluginId(plugin.id)
+        }}
         library={library}
         loading={libraryLoading}
         error={libraryError}
@@ -579,7 +675,16 @@ export default function Page() {
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onWheel={onWheel}
-        className="canvas-paper h-full w-full cursor-grab touch-none active:cursor-grabbing"
+        onDragEnter={(event) => {
+          event.preventDefault()
+          setIsDropTarget(true)
+        }}
+        onDragOver={(event) => event.preventDefault()}
+        onDragLeave={onCanvasDragLeave}
+        onDrop={onCanvasDrop}
+        className={`canvas-paper h-full w-full cursor-grab touch-none active:cursor-grabbing ${
+          isDropTarget ? "ring-2 ring-inset ring-accent/45" : ""
+        }`}
         style={{
           backgroundPosition: `${view.x}px ${view.y}px`,
           backgroundSize: `${28 * view.zoom}px ${28 * view.zoom}px`,
@@ -603,9 +708,18 @@ export default function Page() {
                       title={plugin.name}
                       eyebrow="维度"
                       excerpt={`${plugin.description || "观察维度"} · ${plugin.elements.length} 个元素`}
+                      note={card.note}
                       selected={selected.has(card.id)}
                       onPointerDown={onCardPointerDown}
                       onToggleFold={toggleFold}
+                      onUpdateNote={updateCardNote}
+                      onOpenReader={() => {
+                        setReaderElementId(null)
+                        setReaderPluginId(plugin.id)
+                      }}
+                      readerLabel="读维度"
+                      onConnect={() => startCardConnection(card.id)}
+                      connectLabel={connectSourceCardId === card.id ? "起点已选" : "连线"}
                       onRemove={removeCard}
                     />
                   )
@@ -620,10 +734,17 @@ export default function Page() {
                     title={result.element.title}
                     eyebrow={result.element.pluginId}
                     excerpt={result.element.excerpt}
+                    note={card.note}
                     selected={selected.has(card.id)}
                     onPointerDown={onCardPointerDown}
                     onToggleFold={toggleFold}
-                    onOpenReader={() => setReaderElementId(result.element.id)}
+                    onUpdateNote={updateCardNote}
+                    onOpenReader={() => {
+                      setReaderPluginId(null)
+                      setReaderElementId(result.element.id)
+                    }}
+                    onConnect={() => startCardConnection(card.id)}
+                    connectLabel={connectSourceCardId === card.id ? "起点已选" : "连线"}
                     onRemove={removeCard}
                   />
                 )
@@ -638,13 +759,22 @@ export default function Page() {
             <p className="font-serif text-sm text-muted/70">从左侧 Library 选一个维度或元素，放上画布</p>
           </div>
         )}
+        {isDropTarget && (
+          <div className="pointer-events-none fixed inset-x-0 top-24 z-10 flex justify-center">
+            <span className="rounded-full border border-accent/30 bg-surface/90 px-4 py-2 text-xs text-accent shadow-sm">
+              松开鼠标，把素材放在这里
+            </span>
+          </div>
+        )}
       </div>
 
       <ProjectionBar
         selectedCards={selectedCards}
         onClear={() => setSelected(new Set())}
         library={library}
+        edges={edges}
         onConnect={connectSelectedCards}
+        onDelete={removeSelectedCards}
       />
 
       <PathPanel
@@ -661,6 +791,15 @@ export default function Page() {
         onClose={() => setReaderElementId(null)}
         onSave={saveElement}
         githubBaseUrl={githubBaseUrl}
+      />
+
+      <PluginDrawer
+        plugin={readerPlugin}
+        onClose={() => setReaderPluginId(null)}
+        onOpenElement={(elementId) => {
+          setReaderPluginId(null)
+          setReaderElementId(elementId)
+        }}
       />
     </main>
   )

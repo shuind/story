@@ -8,10 +8,15 @@ interface Props {
   title: string
   eyebrow: string
   excerpt: string
+  note: string
   selected: boolean
   onPointerDown: (e: React.PointerEvent, cardId: string) => void
   onToggleFold: (cardId: string) => void
+  onUpdateNote: (cardId: string, note: string) => void
   onOpenReader?: () => void
+  readerLabel?: string
+  onConnect?: () => void
+  connectLabel?: string
   onRemove: (cardId: string) => void
 }
 
@@ -26,16 +31,20 @@ export function CanvasCardView({
   title,
   eyebrow,
   excerpt,
+  note,
   selected,
   onPointerDown,
   onToggleFold,
+  onUpdateNote,
   onOpenReader,
+  readerLabel = "全文",
+  onConnect,
+  connectLabel = "连线",
   onRemove,
 }: Props) {
   return (
     <div
-      role="button"
-      tabIndex={0}
+      role="group"
       onPointerDown={(e) => onPointerDown(e, card.id)}
       onDoubleClick={() => onToggleFold(card.id)}
       className={`group absolute select-none rounded border bg-surface shadow-sm transition-shadow ${
@@ -58,6 +67,45 @@ export function CanvasCardView({
             }
           />
           <span className="whitespace-nowrap font-serif text-[13px] font-semibold">{title}</span>
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              onToggleFold(card.id)
+            }}
+            title="展开并写下思考"
+            className="text-[10px] text-muted/60 hover:text-accent"
+          >
+            写
+          </button>
+          {onConnect && (
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                onConnect()
+              }}
+              title="选择这张卡片作为连线节点"
+              className={`text-[10px] ${connectLabel === "起点已选" ? "text-accent" : "text-muted/60 hover:text-accent"}`}
+            >
+              {connectLabel === "起点已选" ? "✓" : "连"}
+            </button>
+          )}
+          <button
+            type="button"
+            onPointerDown={(event) => event.stopPropagation()}
+            onClick={(event) => {
+              event.stopPropagation()
+              onRemove(card.id)
+            }}
+            aria-label={`删除${title}`}
+            title="删除卡片"
+            className="ml-1 text-xs text-muted/60 hover:text-accent"
+          >
+            ×
+          </button>
         </div>
       ) : (
         /* 半展态 */
@@ -67,21 +115,59 @@ export function CanvasCardView({
             <span className="shrink-0 text-[10px] tracking-wider text-muted">{eyebrow}</span>
           </div>
           <p className="text-pretty text-[12px] leading-5 text-muted">{excerpt}</p>
-          <div className="mt-2.5 flex items-center gap-3 opacity-0 transition-opacity group-hover:opacity-100">
+          <div className="mt-3">
+            <label className="mb-1 block text-[10px] tracking-wider text-muted">我的思考</label>
+            <textarea
+              value={note}
+              onChange={(event) => onUpdateNote(card.id, event.target.value)}
+              onPointerDown={(event) => event.stopPropagation()}
+              onDoubleClick={(event) => event.stopPropagation()}
+              placeholder="写下判断、问题、冲突或下一步…"
+              rows={3}
+              className="w-full cursor-text resize-y rounded border border-faint bg-background/50 px-2 py-1.5 text-xs leading-5 text-foreground outline-none placeholder:text-muted/50 focus:border-accent"
+            />
+          </div>
+          <div className="mt-2.5 flex items-center gap-3">
             {onOpenReader && (
               <button
                 type="button"
+                onPointerDown={(event) => event.stopPropagation()}
                 onClick={(e) => {
                   e.stopPropagation()
                   onOpenReader()
                 }}
                 className="text-[11px] text-accent hover:underline"
               >
-                全文
+                {readerLabel}
+              </button>
+            )}
+            {onConnect && (
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onConnect()
+                }}
+                className="text-[11px] text-muted hover:text-accent"
+              >
+                {connectLabel}
               </button>
             )}
             <button
               type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                onToggleFold(card.id)
+              }}
+              className="text-[11px] text-muted hover:text-foreground"
+            >
+              收起
+            </button>
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation()
                 onRemove(card.id)

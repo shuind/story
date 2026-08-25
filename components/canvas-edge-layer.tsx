@@ -9,8 +9,9 @@ interface Props {
 }
 
 function cardCenter(card: CanvasCard) {
-  const width = card.fold === 0 ? 72 : 120
-  const height = card.fold === 0 ? 24 : 58
+  // Folded cards are content-sized; expanded cards have a fixed width and note editor.
+  const width = card.fold === 0 ? 150 : 240
+  const height = card.fold === 0 ? 34 : 190
   return { x: card.x + width / 2, y: card.y + height / 2 }
 }
 

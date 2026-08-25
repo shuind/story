@@ -33,6 +33,8 @@ export interface CanvasCard {
   id: string
   kind: CanvasCardKind
   targetId: string
+  /** 创作者在画布上写下的即时思考 */
+  note: string
   x: number
   y: number
   /** 折叠态：0 = 墨签（最折叠），1 = 半展（含摘录） */
