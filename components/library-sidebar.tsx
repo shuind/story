@@ -169,7 +169,7 @@ export function LibrarySidebar({
                           type="button"
                           onClick={() => onOpenReader(el)}
                           title="阅读全文"
-                          className="rounded px-1.5 text-[11px] text-muted opacity-0 transition-opacity hover:text-accent group-hover:opacity-100"
+                          className="rounded border border-transparent px-2 py-0.5 text-[11px] text-muted/70 transition-colors hover:border-faint hover:text-accent focus-visible:border-faint focus-visible:text-accent"
                         >
                           读
                         </button>
@@ -192,7 +192,7 @@ export function LibrarySidebar({
 
         <div className="border-t border-faint px-5 py-3">
           <p className="text-[11px] leading-5 text-muted">
-            维度点「放」· 点击元素放上画布 · 悬停「读」直达全文
+            维度点「放」· 点击元素放上画布 · 点「读」直达全文
           </p>
         </div>
       </aside>
