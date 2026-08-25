@@ -47,12 +47,12 @@ export function CanvasCardView({
       role="group"
       onPointerDown={(e) => onPointerDown(e, card.id)}
       onDoubleClick={() => onToggleFold(card.id)}
-      className={`group absolute select-none rounded border bg-surface shadow-sm transition-shadow ${
+      className={`group absolute select-none rounded-2xl border bg-surface shadow-sm transition-shadow ${
         selected
-          ? "border-accent shadow-md"
+          ? "border-accent shadow-lg ring-4 ring-accent/10"
           : card.kind === "plugin"
-            ? "border-accent/35 hover:border-accent/60 hover:shadow-md"
-            : "border-faint hover:shadow-md"
+            ? "border-accent/35 hover:border-accent/60 hover:shadow-lg"
+            : "border-faint hover:shadow-lg"
       }`}
       style={{ left: card.x, top: card.y, width: card.fold === 0 ? "auto" : 240 }}
     >
@@ -109,15 +109,18 @@ export function CanvasCardView({
         </div>
       ) : (
         /* 半展态 */
-        <div className="cursor-grab p-3.5 active:cursor-grabbing">
-          <div className="mb-1 flex items-baseline justify-between gap-2">
-            <span className="font-serif text-sm font-semibold">{title}</span>
-            <span className="shrink-0 text-[10px] tracking-wider text-muted">{eyebrow}</span>
+        <div className="cursor-grab p-4 active:cursor-grabbing">
+          <div className="mb-2 flex items-center justify-between gap-2">
+            <span className="min-w-0 truncate font-serif text-sm font-semibold">{title}</span>
+            <span className={`shrink-0 rounded-full px-2 py-0.5 text-[9px] tracking-wider ${card.kind === "plugin" ? "bg-accent/10 text-accent" : "bg-faint/60 text-muted"}`}>
+              {card.kind === "plugin" ? "PLUGIN" : eyebrow}
+            </span>
           </div>
           <p className="text-pretty text-[12px] leading-5 text-muted">{excerpt}</p>
           <div className="mt-3">
             <label className="mb-1 block text-[10px] tracking-wider text-muted">我的思考</label>
             <textarea
+              data-card-note={card.id}
               value={note}
               onChange={(event) => onUpdateNote(card.id, event.target.value)}
               onPointerDown={(event) => event.stopPropagation()}

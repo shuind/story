@@ -6,6 +6,8 @@ import { LibrarySidebar } from "@/components/library-sidebar"
 import { CanvasCardView } from "@/components/canvas-card"
 import { ReaderDrawer } from "@/components/reader-drawer"
 import { PluginDrawer } from "@/components/plugin-drawer"
+import { QuickAddPanel } from "@/components/quick-add-panel"
+import { InputDialog, type InputDialogField } from "@/components/input-dialog"
 import { TopBar } from "@/components/top-bar"
 import { ProjectionBar } from "@/components/projection-bar"
 import { PathPanel } from "@/components/path-panel"
@@ -36,6 +38,14 @@ import type {
 } from "@/lib/types"
 
 let cardSeq = 0
+
+interface DialogConfig {
+  title: string
+  description?: string
+  fields: InputDialogField[]
+  submitLabel: string
+  onSubmit: (values: Record<string, string>) => Promise<void> | void
+}
 
 function syncCardSequence(cards: CanvasCard[]) {
   const max = cards.reduce((current, card) => {
@@ -70,11 +80,14 @@ export default function Page() {
   const [edges, setEdges] = useState<CanvasEdge[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [connectSourceCardId, setConnectSourceCardId] = useState<string | null>(null)
+  const [connectionLabel, setConnectionLabel] = useState("")
   const [isDropTarget, setIsDropTarget] = useState(false)
   // ---- UI ----
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [readerElementId, setReaderElementId] = useState<string | null>(null)
   const [readerPluginId, setReaderPluginId] = useState<string | null>(null)
+  const [quickAddOpen, setQuickAddOpen] = useState(false)
+  const [dialog, setDialog] = useState<DialogConfig | null>(null)
   const [library, setLibrary] = useState<PluginDef[]>([])
   const [libraryLoading, setLibraryLoading] = useState(true)
   const [libraryError, setLibraryError] = useState<string | null>(null)
@@ -168,45 +181,58 @@ export default function Page() {
     window.setTimeout(() => setNotice(null), 2400)
   }, [])
 
-  const createPlugin = useCallback(async () => {
-    const name = window.prompt("新维度名称")?.trim()
-    if (!name) return
-    const description = window.prompt("维度说明（可选）")?.trim() ?? ""
-    try {
-      const response = await fetch("/api/library/plugin", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, description }),
-      })
-      const result = (await response.json()) as { error?: string }
-      if (!response.ok) throw new Error(result.error ?? "维度创建失败")
-      await refreshLibrary()
-      showNotice(`已创建「${name}」`)
-    } catch (error) {
-      showNotice(error instanceof Error ? error.message : "维度创建失败")
-    }
+  const createPlugin = useCallback(() => {
+    setDialog({
+      title: "新建维度",
+      description: "维度是画布上的一种观察方式，例如：时代情绪、宿主母体、行当。",
+      fields: [
+        { key: "name", label: "维度名称", placeholder: "例如：城市经验", required: true },
+        { key: "description", label: "一句说明", placeholder: "这个维度观察什么？", multiline: true },
+      ],
+      submitLabel: "创建维度",
+      onSubmit: async (values) => {
+        const name = values.name.trim()
+        const description = values.description?.trim() ?? ""
+        const response = await fetch("/api/library/plugin", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name, description }),
+        })
+        const result = (await response.json()) as { error?: string }
+        if (!response.ok) throw new Error(result.error ?? "维度创建失败")
+        await refreshLibrary()
+        showNotice(`已创建「${name}」`)
+      },
+    })
   }, [refreshLibrary, showNotice])
 
   const createElement = useCallback(
-    async (plugin: PluginDef) => {
-      const title = window.prompt(`在「${plugin.name}」中新建元素`)?.trim()
-      if (!title) return
-      const summary = window.prompt("元素摘要（可选）")?.trim() ?? ""
-      const tags = window.prompt("标签（用逗号分隔，可选）")?.trim() ?? ""
-      try {
-        const response = await fetch("/api/library/element", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pluginId: plugin.id, title, summary, tags }),
-        })
-        const result = (await response.json()) as { error?: string }
-        if (!response.ok) throw new Error(result.error ?? "元素创建失败")
-        await refreshLibrary()
-        setReaderElementId(`${plugin.id}/${title.replace(/\.md$/i, "")}`)
-        showNotice(`已创建「${title}」`)
-      } catch (error) {
-        showNotice(error instanceof Error ? error.message : "元素创建失败")
-      }
+    (plugin: PluginDef) => {
+      setDialog({
+        title: `在「${plugin.name}」中新建元素`,
+        description: "先建立一个素材节点，再在右侧抽屉中补充完整 Markdown。",
+        fields: [
+          { key: "title", label: "元素名称", placeholder: "例如：夜间经济", required: true },
+          { key: "summary", label: "摘要", placeholder: "一句话说明它的感觉或作用", multiline: true },
+          { key: "tags", label: "标签", placeholder: "用逗号分隔，例如：城市,阶级" },
+        ],
+        submitLabel: "创建元素",
+        onSubmit: async (values) => {
+          const title = values.title.trim()
+          const summary = values.summary?.trim() ?? ""
+          const tags = values.tags?.trim() ?? ""
+          const response = await fetch("/api/library/element", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ pluginId: plugin.id, title, summary, tags }),
+          })
+          const result = (await response.json()) as { error?: string }
+          if (!response.ok) throw new Error(result.error ?? "元素创建失败")
+          await refreshLibrary()
+          setReaderElementId(`${plugin.id}/${title.replace(/\.md$/i, "")}`)
+          showNotice(`已创建「${title}」`)
+        },
+      })
     },
     [refreshLibrary, showNotice],
   )
@@ -252,11 +278,18 @@ export default function Page() {
   }, [showNotice])
 
   const renameCanvas = useCallback(() => {
-    const nextName = window.prompt("重命名当前画布", canvasName)?.trim()
-    if (!nextName || nextName === canvasName) return
-    setCanvasName(nextName)
-    setCanvasList((current) => current.map((canvas) => (canvas.id === canvasId ? { ...canvas, name: nextName } : canvas)))
-    showNotice("画布名称已更新")
+    setDialog({
+      title: "重命名画布",
+      fields: [{ key: "name", label: "画布名称", placeholder: "例如：伦敦夜行", required: true }],
+      submitLabel: "保存名称",
+      onSubmit: (values) => {
+        const nextName = values.name.trim()
+        if (nextName === canvasName) return
+        setCanvasName(nextName)
+        setCanvasList((current) => current.map((canvas) => (canvas.id === canvasId ? { ...canvas, name: nextName } : canvas)))
+        showNotice("画布名称已更新")
+      },
+    })
   }, [canvasId, canvasName, showNotice])
 
   const readerElement = useMemo(
@@ -299,22 +332,28 @@ export default function Page() {
 
   const saveCheckpoint = useCallback(() => {
     const defaultLabel = `节点 ${revisions.length + 1}`
-    const label = window.prompt("节点名称", defaultLabel)?.trim()
-    if (!label) return
-
-    const revision: CanvasRevision = {
-      id: `revision-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
-      canvasId,
-      parentId: revisions.at(-1)?.id ?? null,
-      label,
-      createdAt: new Date().toISOString(),
-      snapshot: currentSnapshot(),
-    }
-    const next = [...revisions, revision]
-    setRevisions(next)
-    writePathRevisions(canvasId, next)
-    setPathOpen(true)
-    showNotice(`已保存节点「${label}」`)
+    setDialog({
+      title: "保存 Path 节点",
+      description: "给这一刻的探索命名，之后可以从这里恢复或分叉。",
+      fields: [{ key: "label", label: "节点名称", placeholder: defaultLabel, required: true }],
+      submitLabel: "保存节点",
+      onSubmit: (values) => {
+        const label = values.label.trim()
+        const revision: CanvasRevision = {
+          id: `revision-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+          canvasId,
+          parentId: revisions.at(-1)?.id ?? null,
+          label,
+          createdAt: new Date().toISOString(),
+          snapshot: currentSnapshot(),
+        }
+        const next = [...revisions, revision]
+        setRevisions(next)
+        writePathRevisions(canvasId, next)
+        setPathOpen(true)
+        showNotice(`已保存节点「${label}」`)
+      },
+    })
   }, [canvasId, currentSnapshot, revisions, showNotice])
 
   const restoreRevision = useCallback(
@@ -332,39 +371,45 @@ export default function Page() {
 
   const forkRevision = useCallback(
     (revision: CanvasRevision) => {
-      const name = window.prompt("分支画布名称", `${canvasName} · ${revision.label}`)?.trim()
-      if (!name) return
-
-      const nextId = `canvas-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
-      const sourceIndex = revisions.findIndex((item) => item.id === revision.id)
-      const sourceRevisions = sourceIndex >= 0 ? revisions.slice(0, sourceIndex + 1) : [revision]
-      const revisionIds = new Map(sourceRevisions.map((item) => [item.id, `${nextId}:${item.id}`]))
-      const copiedRevisions = sourceRevisions.map((item) => ({
-        ...item,
-        id: revisionIds.get(item.id) ?? `${nextId}:${item.id}`,
-        canvasId: nextId,
-        parentId: item.parentId ? revisionIds.get(item.parentId) ?? null : null,
-        snapshot: createCanvasSnapshot(
-          item.snapshot.canvas.cards,
-          item.snapshot.canvas.edges,
-          item.snapshot.view,
-          name,
-          nextId,
-        ),
-      }))
-      const snapshot = parseCanvasSnapshot(revision.snapshot)
-      setCanvasList((current) => [...current, { id: nextId, name }])
-      setCanvasId(nextId)
-      setCanvasName(name)
-      setCards(snapshot.canvas.cards)
-      setEdges(snapshot.canvas.edges)
-      setView(snapshot.view)
-      setRevisions(copiedRevisions)
-      writePathRevisions(nextId, copiedRevisions)
-      setSelected(new Set())
-      syncCardSequence(snapshot.canvas.cards)
-      setPathOpen(false)
-      showNotice(`已从「${revision.label}」创建分支`)
+      setDialog({
+        title: "从节点分叉",
+        description: `从「${revision.label}」创建一张新的画布，原路径会保留。`,
+        fields: [{ key: "name", label: "新画布名称", placeholder: `${canvasName} · ${revision.label}`, required: true }],
+        submitLabel: "创建分支",
+        onSubmit: (values) => {
+          const name = values.name.trim()
+          const nextId = `canvas-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+          const sourceIndex = revisions.findIndex((item) => item.id === revision.id)
+          const sourceRevisions = sourceIndex >= 0 ? revisions.slice(0, sourceIndex + 1) : [revision]
+          const revisionIds = new Map(sourceRevisions.map((item) => [item.id, `${nextId}:${item.id}`]))
+          const copiedRevisions = sourceRevisions.map((item) => ({
+            ...item,
+            id: revisionIds.get(item.id) ?? `${nextId}:${item.id}`,
+            canvasId: nextId,
+            parentId: item.parentId ? revisionIds.get(item.parentId) ?? null : null,
+            snapshot: createCanvasSnapshot(
+              item.snapshot.canvas.cards,
+              item.snapshot.canvas.edges,
+              item.snapshot.view,
+              name,
+              nextId,
+            ),
+          }))
+          const snapshot = parseCanvasSnapshot(revision.snapshot)
+          setCanvasList((current) => [...current, { id: nextId, name }])
+          setCanvasId(nextId)
+          setCanvasName(name)
+          setCards(snapshot.canvas.cards)
+          setEdges(snapshot.canvas.edges)
+          setView(snapshot.view)
+          setRevisions(copiedRevisions)
+          writePathRevisions(nextId, copiedRevisions)
+          setSelected(new Set())
+          syncCardSequence(snapshot.canvas.cards)
+          setPathOpen(false)
+          showNotice(`已从「${revision.label}」创建分支`)
+        },
+      })
     },
     [canvasName, revisions, showNotice],
   )
@@ -531,7 +576,10 @@ export default function Page() {
       next.delete(cardId)
       return next
     })
-    if (connectSourceCardId === cardId) setConnectSourceCardId(null)
+    if (connectSourceCardId === cardId) {
+      setConnectSourceCardId(null)
+      setConnectionLabel("")
+    }
   }
 
   const updateCardNote = useCallback((cardId: string, note: string) => {
@@ -563,6 +611,24 @@ export default function Page() {
     return () => window.removeEventListener("keydown", onKeyDown)
   }, [removeSelectedCards])
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null
+      const isTyping = target?.isContentEditable || target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT"
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k" && !isTyping) {
+        event.preventDefault()
+        setQuickAddOpen(true)
+      }
+      if (event.key === "Escape") {
+        setQuickAddOpen(false)
+        setConnectSourceCardId(null)
+        setConnectionLabel("")
+      }
+    }
+    window.addEventListener("keydown", onKeyDown)
+    return () => window.removeEventListener("keydown", onKeyDown)
+  }, [])
+
   const removeEdge = useCallback(
     (edgeId: string) => {
       setEdges((current) => current.filter((edge) => edge.id !== edgeId))
@@ -575,10 +641,8 @@ export default function Page() {
   const selectedCardIds = selectedCards.map((card) => card.id)
 
   const connectCards = useCallback(
-    (fromCardId: string, toCardId: string) => {
+    (fromCardId: string, toCardId: string, label: string) => {
       if (fromCardId === toCardId) return
-      const label = window.prompt("关系标签（可选）", "关系")
-      if (label === null) return
       const exists = edges.some(
         (edge) =>
           (edge.fromCardId === fromCardId && edge.toCardId === toCardId) ||
@@ -594,7 +658,7 @@ export default function Page() {
           id: `edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
           fromCardId,
           toCardId,
-          label: label.trim(),
+          label: label.trim() || "关联",
         },
       ])
       showNotice("已建立连线")
@@ -602,10 +666,11 @@ export default function Page() {
     [edges, showNotice],
   )
 
-  const connectSelectedCards = useCallback(() => {
+  const connectSelectedCards = useCallback((label: string) => {
     if (selectedCardIds.length !== 2) return
     const [fromCardId, toCardId] = selectedCardIds
-    connectCards(fromCardId, toCardId)
+    connectCards(fromCardId, toCardId, label)
+    setConnectionLabel("")
   }, [connectCards, selectedCardIds])
 
   const startCardConnection = useCallback(
@@ -617,12 +682,34 @@ export default function Page() {
       }
       if (connectSourceCardId === cardId) {
         setConnectSourceCardId(null)
+        setConnectionLabel("")
         return
       }
-      connectCards(connectSourceCardId, cardId)
+      connectCards(connectSourceCardId, cardId, connectionLabel)
       setConnectSourceCardId(null)
+      setConnectionLabel("")
     },
-    [connectCards, connectSourceCardId, showNotice],
+    [connectCards, connectSourceCardId, connectionLabel, showNotice],
+  )
+
+  const focusCardNote = useCallback((cardId: string) => {
+    setCards((current) => current.map((card) => (card.id === cardId ? { ...card, fold: 1 } : card)))
+    requestAnimationFrame(() => {
+      document.querySelector<HTMLTextAreaElement>(`[data-card-note="${cardId}"]`)?.focus()
+    })
+  }, [])
+
+  const readCard = useCallback(
+    (card: CanvasCard) => {
+      if (card.kind === "plugin") {
+        setReaderElementId(null)
+        setReaderPluginId(card.targetId)
+      } else {
+        setReaderPluginId(null)
+        setReaderElementId(card.targetId)
+      }
+    },
+    [],
   )
 
   return (
@@ -637,6 +724,7 @@ export default function Page() {
         onCreateCanvas={createCanvas}
         onRenameCanvas={renameCanvas}
         onTogglePath={() => setPathOpen((open) => !open)}
+        onOpenQuickAdd={() => setQuickAddOpen(true)}
         onExportJson={exportJson}
         onExportMarkdown={exportMarkdown}
         onImport={importCanvas}
@@ -766,6 +854,11 @@ export default function Page() {
             </span>
           </div>
         )}
+        {cards.length > 0 && selectedCards.length === 0 && !quickAddOpen && (
+          <div className="pointer-events-none fixed bottom-5 left-5 z-10 rounded-full border border-faint/80 bg-surface/80 px-3 py-2 text-[10px] text-muted backdrop-blur-sm">
+            拖入素材 · Ctrl/⌘ K 添加 · Shift 多选
+          </div>
+        )}
       </div>
 
       <ProjectionBar
@@ -775,6 +868,30 @@ export default function Page() {
         edges={edges}
         onConnect={connectSelectedCards}
         onDelete={removeSelectedCards}
+        onFocusNote={focusCardNote}
+        onRead={readCard}
+        onStartConnection={startCardConnection}
+        connectionMode={connectSourceCardId !== null}
+        connectionLabel={connectionLabel}
+        onConnectionLabelChange={setConnectionLabel}
+      />
+
+      <QuickAddPanel
+        open={quickAddOpen}
+        library={library}
+        onClose={() => setQuickAddOpen(false)}
+        onAddPlugin={(plugin) => placePlugin(plugin)}
+        onAddElement={(element) => placeElement(element)}
+      />
+
+      <InputDialog
+        open={dialog !== null}
+        title={dialog?.title ?? ""}
+        description={dialog?.description}
+        fields={dialog?.fields ?? []}
+        submitLabel={dialog?.submitLabel ?? "确认"}
+        onClose={() => setDialog(null)}
+        onSubmit={dialog?.onSubmit ?? (() => undefined)}
       />
 
       <PathPanel

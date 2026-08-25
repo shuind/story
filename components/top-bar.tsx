@@ -13,6 +13,7 @@ interface Props {
   onCreateCanvas: () => void
   onRenameCanvas: () => void
   onTogglePath: () => void
+  onOpenQuickAdd: () => void
   onExportJson: () => void
   onExportMarkdown: () => void
   onImport: (file: File) => void
@@ -31,6 +32,7 @@ export function TopBar({
   onCreateCanvas,
   onRenameCanvas,
   onTogglePath,
+  onOpenQuickAdd,
   onExportJson,
   onExportMarkdown,
   onImport,
@@ -67,6 +69,17 @@ export function TopBar({
             </button>
           </div>
         </details>
+
+        <span className="h-4 w-px bg-faint" />
+
+        <button
+          type="button"
+          onClick={onOpenQuickAdd}
+          className="flex items-center gap-2 rounded-full bg-foreground px-3 py-1.5 text-xs text-background transition-transform hover:scale-[1.02]"
+        >
+          <span>添加</span>
+          <kbd className="rounded bg-background/15 px-1.5 py-0.5 font-mono text-[10px]">Ctrl/⌘ K</kbd>
+        </button>
 
         <span className="h-4 w-px bg-faint" />
 
