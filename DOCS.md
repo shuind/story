@@ -33,7 +33,7 @@ app/
   api/library/element/  创建新的 Element Markdown 并 SSH commit/push
 components/
   top-bar.tsx           顶栏：画布切换、缩放、导入、导出
-  library-sidebar.tsx   左侧 Library：搜索、插件分组、元素列表 —— 占位：新维度
+  library-sidebar.tsx   左侧 Library：搜索、插件分组、元素列表、新建维度/元素
   canvas-card.tsx       画布卡片：三态折叠（墨签/半展/全展入口）
   reader-drawer.tsx     右侧抽屉：读全文 / 编辑 markdown        —— 保存后 SSH commit/push
   projection-bar.tsx    底部投影条：多卡拼合复制为 prompt
