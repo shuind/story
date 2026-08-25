@@ -11,6 +11,7 @@ function el(pluginId: string, title: string, excerpt: string, content: string) {
     path: `library/${pluginId}/${title}.md`,
     excerpt,
     content,
+    tags: [],
   }
 }
 

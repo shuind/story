@@ -12,6 +12,7 @@ interface Props {
   onSwitchCanvas: (id: string) => void
   onCreateCanvas: () => void
   onRenameCanvas: () => void
+  onTogglePath: () => void
   onExportJson: () => void
   onExportMarkdown: () => void
   onImport: (file: File) => void
@@ -29,6 +30,7 @@ export function TopBar({
   onSwitchCanvas,
   onCreateCanvas,
   onRenameCanvas,
+  onTogglePath,
   onExportJson,
   onExportMarkdown,
   onImport,
@@ -75,6 +77,12 @@ export function TopBar({
           className="font-mono text-[11px] text-muted hover:text-accent"
         >
           {Math.round(zoom * 100)}%
+        </button>
+
+        <span className="h-4 w-px bg-faint" />
+
+        <button type="button" onClick={onTogglePath} className="text-xs text-muted hover:text-accent">
+          Path
         </button>
 
         <span className="h-4 w-px bg-faint" />

@@ -39,11 +39,18 @@ export async function POST(request: Request) {
       pluginId?: unknown
       title?: unknown
       summary?: unknown
+      tags?: unknown
       content?: unknown
     }
     const pluginId = typeof body.pluginId === "string" ? body.pluginId.trim() : ""
     const title = typeof body.title === "string" ? body.title.trim().replace(/\.md$/i, "") : ""
     const summary = typeof body.summary === "string" ? body.summary.trim().replace(/\r?\n/g, " ") : ""
+    const tags = (Array.isArray(body.tags) ? body.tags : typeof body.tags === "string" ? body.tags.split(",") : [])
+      .filter((item): item is string => typeof item === "string")
+      .map((item) => item.trim())
+      .filter(Boolean)
+      .filter((item, index, all) => all.indexOf(item) === index)
+      .slice(0, 20)
     const content = typeof body.content === "string" && body.content.trim() ? body.content.trim() : `# ${title}`
 
     if (!isSafeSegment(pluginId) || !isSafeSegment(title) || summary.length > 200) {
@@ -61,7 +68,7 @@ export async function POST(request: Request) {
 
     const target = path.join(pluginRoot, `${title}.md`)
     try {
-      await writeFile(target, matter.stringify(`${content}\n`, { title, summary }), { encoding: "utf8", flag: "wx" })
+      await writeFile(target, matter.stringify(`${content}\n`, { title, summary, tags }), { encoding: "utf8", flag: "wx" })
     } catch (error) {
       if (error && typeof error === "object" && "code" in error && error.code === "EEXIST") {
         return NextResponse.json({ error: "该元素已经存在" }, { status: 409 })
@@ -81,6 +88,7 @@ export async function POST(request: Request) {
           path: relativePath.split(path.sep).join("/"),
           content,
           excerpt: summary,
+          tags,
         },
         ...git,
       },

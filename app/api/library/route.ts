@@ -16,6 +16,16 @@ function fallbackSummary(content: string) {
   return line?.slice(0, 100) ?? ""
 }
 
+function parseTags(value: unknown) {
+  const values = Array.isArray(value) ? value : typeof value === "string" ? value.split(",") : []
+  return values
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .filter((item, index, all) => all.indexOf(item) === index)
+    .slice(0, 20)
+}
+
 async function readPlugin(directory: string): Promise<PluginDef> {
   const pluginRoot = path.join(libraryRoot, directory)
   const entries = await readdir(pluginRoot, { withFileTypes: true })
@@ -40,6 +50,7 @@ async function readPlugin(directory: string): Promise<PluginDef> {
         content,
         excerpt:
           typeof parsed.data.summary === "string" ? parsed.data.summary : fallbackSummary(content),
+        tags: parseTags(parsed.data.tags),
       }
     }),
   )

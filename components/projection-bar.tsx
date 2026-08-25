@@ -6,8 +6,10 @@ import type { PluginDef } from "@/lib/types"
 
 interface Props {
   selectedElementIds: string[]
+  selectedCardIds: string[]
   onClear: () => void
   library: PluginDef[]
+  onConnect: () => void
 }
 
 /**
@@ -15,7 +17,7 @@ interface Props {
  * “复制为 Prompt” 将选中元素的全文拼合为一段 markdown 写入剪贴板，
  * 供粘贴到 ChatGPT / Claude 等 AI 官网进行投影与推衍。
  */
-export function ProjectionBar({ selectedElementIds, onClear, library }: Props) {
+export function ProjectionBar({ selectedElementIds, selectedCardIds, onClear, library, onConnect }: Props) {
   const [copied, setCopied] = useState(false)
   if (selectedElementIds.length === 0) return null
 
@@ -45,6 +47,11 @@ export function ProjectionBar({ selectedElementIds, onClear, library }: Props) {
         >
           {copied ? "已复制 ✓" : "复制为 Prompt"}
         </button>
+        {selectedCardIds.length === 2 && (
+          <button type="button" onClick={onConnect} className="text-xs text-muted hover:text-accent">
+            连接选中
+          </button>
+        )}
         <button type="button" onClick={onClear} className="text-xs text-muted hover:text-foreground">
           取消
         </button>

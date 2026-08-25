@@ -1,8 +1,19 @@
-import type { CanvasCard, CanvasIndex, CanvasListItem, CanvasSnapshot, CanvasView, PluginDef } from "@/lib/types"
+import type {
+  CanvasCard,
+  CanvasEdge,
+  CanvasIndex,
+  CanvasListItem,
+  CanvasPathState,
+  CanvasRevision,
+  CanvasSnapshot,
+  CanvasView,
+  PluginDef,
+} from "@/lib/types"
 
 export const CANVAS_STORAGE_PREFIX = "story-canvas:"
 export const CANVAS_INDEX_STORAGE_KEY = "story-canvas:index"
 export const CANVAS_STORAGE_KEY = `${CANVAS_STORAGE_PREFIX}default`
+export const CANVAS_PATH_PREFIX = "story-canvas:path:"
 
 const DEFAULT_VIEW: CanvasView = { x: 0, y: 0, zoom: 1 }
 
@@ -10,8 +21,13 @@ export function canvasStorageKey(id: string) {
   return `${CANVAS_STORAGE_PREFIX}${id}`
 }
 
+export function canvasPathStorageKey(id: string) {
+  return `${CANVAS_PATH_PREFIX}${id}`
+}
+
 export function createCanvasSnapshot(
   cards: CanvasCard[],
+  edges: CanvasEdge[],
   view: CanvasView,
   name = "未命名画布",
   id = "default",
@@ -22,9 +38,30 @@ export function createCanvasSnapshot(
       id,
       name,
       cards,
+      edges,
     },
     view,
   }
+}
+
+export function parseCanvasPathState(value: unknown): CanvasPathState {
+  if (!value || typeof value !== "object") return { version: 1, revisions: [] }
+  const input = value as Partial<CanvasPathState>
+  if (!Array.isArray(input.revisions)) return { version: 1, revisions: [] }
+
+  const revisions = input.revisions.filter((item): item is CanvasRevision => {
+    if (!item || typeof item !== "object") return false
+    const candidate = item as Partial<CanvasRevision>
+    return (
+      typeof candidate.id === "string" &&
+      typeof candidate.canvasId === "string" &&
+      (candidate.parentId === null || typeof candidate.parentId === "string") &&
+      typeof candidate.label === "string" &&
+      typeof candidate.createdAt === "string" &&
+      candidate.snapshot !== undefined
+    )
+  })
+  return { version: 1, revisions }
 }
 
 export function parseCanvasIndex(value: unknown): CanvasIndex {
@@ -87,6 +124,32 @@ export function parseCanvasSnapshot(value: unknown): CanvasSnapshot {
     }
   })
 
+  const edges = Array.isArray(canvas.edges)
+    ? canvas.edges.map((edge) => {
+        if (!edge || typeof edge !== "object") throw new Error("画布连线格式无效")
+        const item = edge as Partial<CanvasEdge>
+        if (
+          typeof item.id !== "string" ||
+          typeof item.fromCardId !== "string" ||
+          typeof item.toCardId !== "string" ||
+          typeof item.label !== "string" ||
+          item.fromCardId === item.toCardId
+        ) {
+          throw new Error("画布连线字段无效")
+        }
+        return {
+          id: item.id,
+          fromCardId: item.fromCardId,
+          toCardId: item.toCardId,
+          label: item.label,
+        }
+      })
+    : []
+  const cardIds = new Set(cards.map((card) => card.id))
+  if (edges.some((edge) => !cardIds.has(edge.fromCardId) || !cardIds.has(edge.toCardId))) {
+    throw new Error("画布连线引用了不存在的卡片")
+  }
+
   const nextView = {
     x: view?.x ?? DEFAULT_VIEW.x,
     y: view?.y ?? DEFAULT_VIEW.y,
@@ -102,6 +165,7 @@ export function parseCanvasSnapshot(value: unknown): CanvasSnapshot {
       id: typeof canvas.id === "string" ? canvas.id : "default",
       name: canvas.name,
       cards,
+      edges,
     },
     view: nextView,
   }

@@ -74,6 +74,15 @@ export function ReaderDrawer({ element: el, onClose, onSave, githubBaseUrl }: Pr
               <div className="min-w-0 flex-1">
                 <h2 className="truncate font-serif text-lg font-semibold">{el.title}</h2>
                 <p className="truncate font-mono text-[11px] text-muted">{el.path}</p>
+                {el.tags.length > 0 && (
+                  <div className="mt-1 flex gap-1 overflow-hidden">
+                    {el.tags.map((tag) => (
+                      <span key={tag} className="shrink-0 text-[10px] text-muted">
+                        #{tag}
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               <div className="flex items-center gap-1 rounded-full border border-faint p-0.5 text-xs">

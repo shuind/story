@@ -13,6 +13,8 @@ export interface ElementDoc {
   content: string
   /** 一句话摘录，用于半展态卡片 */
   excerpt: string
+  /** 用于 Library 过滤的标签 */
+  tags: string[]
 }
 
 /** 一个插件：一个观察维度，对应 library 下的一个目录 */
@@ -34,11 +36,20 @@ export interface CanvasCard {
   fold: 0 | 1
 }
 
+/** 画布上的一条有向关系线 */
+export interface CanvasEdge {
+  id: string
+  fromCardId: string
+  toCardId: string
+  label: string
+}
+
 /** 一张画布 */
 export interface CanvasDoc {
   id: string
   name: string
   cards: CanvasCard[]
+  edges: CanvasEdge[]
 }
 
 export interface CanvasView {
@@ -61,4 +72,18 @@ export interface CanvasListItem {
 export interface CanvasIndex {
   activeId: string
   canvases: CanvasListItem[]
+}
+
+export interface CanvasRevision {
+  id: string
+  canvasId: string
+  parentId: string | null
+  label: string
+  createdAt: string
+  snapshot: CanvasSnapshot
+}
+
+export interface CanvasPathState {
+  version: 1
+  revisions: CanvasRevision[]
 }

@@ -7,18 +7,31 @@ import { CanvasCardView } from "@/components/canvas-card"
 import { ReaderDrawer } from "@/components/reader-drawer"
 import { TopBar } from "@/components/top-bar"
 import { ProjectionBar } from "@/components/projection-bar"
+import { PathPanel } from "@/components/path-panel"
+import { CanvasEdgeLayer } from "@/components/canvas-edge-layer"
 import {
   CANVAS_INDEX_STORAGE_KEY,
   CANVAS_STORAGE_KEY,
+  canvasPathStorageKey,
   canvasToMarkdown,
   canvasStorageKey,
   createCanvasSnapshot,
   downloadText,
   findLibraryElement,
+  parseCanvasPathState,
   parseCanvasIndex,
   parseCanvasSnapshot,
 } from "@/lib/canvas"
-import type { CanvasCard, CanvasIndex, CanvasListItem, ElementDoc, PluginDef } from "@/lib/types"
+import type {
+  CanvasCard,
+  CanvasEdge,
+  CanvasIndex,
+  CanvasListItem,
+  CanvasPathState,
+  CanvasRevision,
+  ElementDoc,
+  PluginDef,
+} from "@/lib/types"
 
 let cardSeq = 0
 
@@ -30,6 +43,20 @@ function syncCardSequence(cards: CanvasCard[]) {
   cardSeq = Math.max(cardSeq, max)
 }
 
+function readPathRevisions(canvasId: string) {
+  try {
+    const raw = window.localStorage.getItem(canvasPathStorageKey(canvasId))
+    return raw ? parseCanvasPathState(JSON.parse(raw)).revisions : []
+  } catch {
+    return []
+  }
+}
+
+function writePathRevisions(canvasId: string, revisions: CanvasRevision[]) {
+  const state: CanvasPathState = { version: 1, revisions }
+  window.localStorage.setItem(canvasPathStorageKey(canvasId), JSON.stringify(state))
+}
+
 export default function Page() {
   // ---- 画布视图（平移 / 缩放） ----
   const [view, setView] = useState({ x: 0, y: 0, zoom: 1 })
@@ -38,6 +65,7 @@ export default function Page() {
   const [canvasList, setCanvasList] = useState<CanvasListItem[]>([{ id: "default", name: "未命名画布" }])
   // ---- 卡片 ----
   const [cards, setCards] = useState<CanvasCard[]>([])
+  const [edges, setEdges] = useState<CanvasEdge[]>([])
   const [selected, setSelected] = useState<Set<string>>(new Set())
   // ---- UI ----
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -47,6 +75,8 @@ export default function Page() {
   const [libraryError, setLibraryError] = useState<string | null>(null)
   const [hydrated, setHydrated] = useState(false)
   const [notice, setNotice] = useState<string | null>(null)
+  const [pathOpen, setPathOpen] = useState(false)
+  const [revisions, setRevisions] = useState<CanvasRevision[]>([])
 
   const githubBaseUrl = "https://github.com/shuind/story"
 
@@ -102,9 +132,11 @@ export default function Page() {
       if (raw) {
         const snapshot = parseCanvasSnapshot(JSON.parse(raw))
         setCards(snapshot.canvas.cards)
+        setEdges(snapshot.canvas.edges)
         setView(snapshot.view)
         syncCardSequence(snapshot.canvas.cards)
       }
+      setRevisions(readPathRevisions(index.activeId))
       setCanvasId(index.activeId)
       setCanvasList(index.canvases)
     } catch {
@@ -117,14 +149,14 @@ export default function Page() {
 
   useEffect(() => {
     if (!hydrated) return
-    const snapshot = createCanvasSnapshot(cards, view, canvasName, canvasId)
+    const snapshot = createCanvasSnapshot(cards, edges, view, canvasName, canvasId)
     const nextCanvases = canvasList.some((canvas) => canvas.id === canvasId)
       ? canvasList.map((canvas) => (canvas.id === canvasId ? { ...canvas, name: canvasName } : canvas))
       : [...canvasList, { id: canvasId, name: canvasName }]
     const index: CanvasIndex = { activeId: canvasId, canvases: nextCanvases }
     window.localStorage.setItem(canvasStorageKey(canvasId), JSON.stringify(snapshot))
     window.localStorage.setItem(CANVAS_INDEX_STORAGE_KEY, JSON.stringify(index))
-  }, [cards, canvasId, canvasList, canvasName, hydrated, view])
+  }, [cards, canvasId, canvasList, canvasName, edges, hydrated, view])
 
   const showNotice = useCallback((message: string) => {
     setNotice(message)
@@ -155,11 +187,12 @@ export default function Page() {
       const title = window.prompt(`在「${plugin.name}」中新建元素`)?.trim()
       if (!title) return
       const summary = window.prompt("元素摘要（可选）")?.trim() ?? ""
+      const tags = window.prompt("标签（用逗号分隔，可选）")?.trim() ?? ""
       try {
         const response = await fetch("/api/library/element", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ pluginId: plugin.id, title, summary }),
+          body: JSON.stringify({ pluginId: plugin.id, title, summary, tags }),
         })
         const result = (await response.json()) as { error?: string }
         if (!response.ok) throw new Error(result.error ?? "元素创建失败")
@@ -185,7 +218,9 @@ export default function Page() {
         setCanvasId(nextId)
         setCanvasName(metadata.name)
         setCards(snapshot?.canvas.cards ?? [])
+        setEdges(snapshot?.canvas.edges ?? [])
         setView(snapshot?.view ?? { x: 0, y: 0, zoom: 1 })
+        setRevisions(readPathRevisions(nextId))
         setSelected(new Set())
         if (snapshot) syncCardSequence(snapshot.canvas.cards)
         showNotice(`已切换到「${metadata.name}」`)
@@ -203,7 +238,10 @@ export default function Page() {
     setCanvasId(id)
     setCanvasName(name)
     setCards([])
+    setEdges([])
     setView({ x: 0, y: 0, zoom: 1 })
+    setRevisions([])
+    writePathRevisions(id, [])
     setSelected(new Set())
     showNotice("已新建画布")
   }, [showNotice])
@@ -245,8 +283,80 @@ export default function Page() {
   }, [])
 
   const currentSnapshot = useCallback(
-    () => createCanvasSnapshot(cards, view, canvasName, canvasId),
-    [cards, canvasId, canvasName, view],
+    () => createCanvasSnapshot(cards, edges, view, canvasName, canvasId),
+    [cards, canvasId, canvasName, edges, view],
+  )
+
+  const saveCheckpoint = useCallback(() => {
+    const defaultLabel = `节点 ${revisions.length + 1}`
+    const label = window.prompt("节点名称", defaultLabel)?.trim()
+    if (!label) return
+
+    const revision: CanvasRevision = {
+      id: `revision-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+      canvasId,
+      parentId: revisions.at(-1)?.id ?? null,
+      label,
+      createdAt: new Date().toISOString(),
+      snapshot: currentSnapshot(),
+    }
+    const next = [...revisions, revision]
+    setRevisions(next)
+    writePathRevisions(canvasId, next)
+    setPathOpen(true)
+    showNotice(`已保存节点「${label}」`)
+  }, [canvasId, currentSnapshot, revisions, showNotice])
+
+  const restoreRevision = useCallback(
+    (revision: CanvasRevision) => {
+      const snapshot = parseCanvasSnapshot(revision.snapshot)
+      setCards(snapshot.canvas.cards)
+      setEdges(snapshot.canvas.edges)
+      setView(snapshot.view)
+      setSelected(new Set())
+      syncCardSequence(snapshot.canvas.cards)
+      showNotice(`已恢复「${revision.label}」`)
+    },
+    [showNotice],
+  )
+
+  const forkRevision = useCallback(
+    (revision: CanvasRevision) => {
+      const name = window.prompt("分支画布名称", `${canvasName} · ${revision.label}`)?.trim()
+      if (!name) return
+
+      const nextId = `canvas-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`
+      const sourceIndex = revisions.findIndex((item) => item.id === revision.id)
+      const sourceRevisions = sourceIndex >= 0 ? revisions.slice(0, sourceIndex + 1) : [revision]
+      const revisionIds = new Map(sourceRevisions.map((item) => [item.id, `${nextId}:${item.id}`]))
+      const copiedRevisions = sourceRevisions.map((item) => ({
+        ...item,
+        id: revisionIds.get(item.id) ?? `${nextId}:${item.id}`,
+        canvasId: nextId,
+        parentId: item.parentId ? revisionIds.get(item.parentId) ?? null : null,
+        snapshot: createCanvasSnapshot(
+          item.snapshot.canvas.cards,
+          item.snapshot.canvas.edges,
+          item.snapshot.view,
+          name,
+          nextId,
+        ),
+      }))
+      const snapshot = parseCanvasSnapshot(revision.snapshot)
+      setCanvasList((current) => [...current, { id: nextId, name }])
+      setCanvasId(nextId)
+      setCanvasName(name)
+      setCards(snapshot.canvas.cards)
+      setEdges(snapshot.canvas.edges)
+      setView(snapshot.view)
+      setRevisions(copiedRevisions)
+      writePathRevisions(nextId, copiedRevisions)
+      setSelected(new Set())
+      syncCardSequence(snapshot.canvas.cards)
+      setPathOpen(false)
+      showNotice(`已从「${revision.label}」创建分支`)
+    },
+    [canvasName, revisions, showNotice],
   )
 
   const exportJson = useCallback(() => {
@@ -264,6 +374,7 @@ export default function Page() {
       try {
         const snapshot = parseCanvasSnapshot(JSON.parse(await file.text()))
         setCards(snapshot.canvas.cards)
+        setEdges(snapshot.canvas.edges)
         setView(snapshot.view)
         setCanvasName(snapshot.canvas.name)
         setCanvasList((current) =>
@@ -375,6 +486,7 @@ export default function Page() {
 
   const removeCard = (cardId: string) => {
     setCards((cs) => cs.filter((c) => c.id !== cardId))
+    setEdges((current) => current.filter((edge) => edge.fromCardId !== cardId && edge.toCardId !== cardId))
     setSelected((s) => {
       const next = new Set(s)
       next.delete(cardId)
@@ -382,7 +494,42 @@ export default function Page() {
     })
   }
 
+  const removeEdge = useCallback(
+    (edgeId: string) => {
+      setEdges((current) => current.filter((edge) => edge.id !== edgeId))
+      showNotice("已移除连线")
+    },
+    [showNotice],
+  )
+
   const selectedElementIds = cards.filter((c) => selected.has(c.id)).map((c) => c.elementId)
+  const selectedCardIds = cards.filter((c) => selected.has(c.id)).map((c) => c.id)
+
+  const connectSelectedCards = useCallback(() => {
+    if (selectedCardIds.length !== 2) return
+    const label = window.prompt("关系标签（可选）", "关系")
+    if (label === null) return
+    const [fromCardId, toCardId] = selectedCardIds
+    const exists = edges.some(
+      (edge) =>
+        (edge.fromCardId === fromCardId && edge.toCardId === toCardId) ||
+        (edge.fromCardId === toCardId && edge.toCardId === fromCardId),
+    )
+    if (exists) {
+      showNotice("这两张卡片已经有连线")
+      return
+    }
+    setEdges((current) => [
+      ...current,
+      {
+        id: `edge-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+        fromCardId,
+        toCardId,
+        label: label.trim(),
+      },
+    ])
+    showNotice("已建立连线")
+  }, [edges, selectedCardIds, showNotice])
 
   return (
     <main className="h-screen w-screen overflow-hidden">
@@ -395,6 +542,7 @@ export default function Page() {
         onSwitchCanvas={switchCanvas}
         onCreateCanvas={createCanvas}
         onRenameCanvas={renameCanvas}
+        onTogglePath={() => setPathOpen((open) => !open)}
         onExportJson={exportJson}
         onExportMarkdown={exportMarkdown}
         onImport={importCanvas}
@@ -435,6 +583,7 @@ export default function Page() {
           className="pointer-events-none absolute left-0 top-0 h-0 w-0"
           style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.zoom})` }}
         >
+          <CanvasEdgeLayer cards={cards} edges={edges} onRemove={removeEdge} />
           <div className="pointer-events-auto">
             {cards.map((card) => (
               (() => {
@@ -465,7 +614,22 @@ export default function Page() {
         )}
       </div>
 
-      <ProjectionBar selectedElementIds={selectedElementIds} onClear={() => setSelected(new Set())} library={library} />
+      <ProjectionBar
+        selectedElementIds={selectedElementIds}
+        selectedCardIds={selectedCardIds}
+        onClear={() => setSelected(new Set())}
+        library={library}
+        onConnect={connectSelectedCards}
+      />
+
+      <PathPanel
+        open={pathOpen}
+        revisions={revisions}
+        onClose={() => setPathOpen(false)}
+        onSaveCheckpoint={saveCheckpoint}
+        onRestore={restoreRevision}
+        onFork={forkRevision}
+      />
 
       <ReaderDrawer
         element={readerElement}

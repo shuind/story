@@ -31,18 +31,34 @@ export function LibrarySidebar({
   onCreateElement,
 }: Props) {
   const [query, setQuery] = useState("")
+  const [tagFilter, setTagFilter] = useState("")
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
-  const filtered = useMemo(() => {
-    if (!query.trim()) return library
-    const q = query.trim().toLowerCase()
-    return library.map((p) => ({
-      ...p,
-      elements: p.elements.filter(
-        (e) => e.title.toLowerCase().includes(q) || e.excerpt.toLowerCase().includes(q),
+  const tags = useMemo(
+    () =>
+      Array.from(new Set(library.flatMap((plugin) => plugin.elements.flatMap((element) => element.tags)))).sort((a, b) =>
+        a.localeCompare(b, "zh-CN"),
       ),
-    })).filter((p) => p.elements.length > 0 || p.name.toLowerCase().includes(q))
-  }, [library, query])
+    [library],
+  )
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    return library
+      .map((plugin) => ({
+        ...plugin,
+        elements: plugin.elements.filter((element) => {
+          const matchesQuery =
+            !q ||
+            [element.title, element.excerpt, element.content, element.tags.join(" ")].some((value) =>
+              value.toLowerCase().includes(q),
+            )
+          const matchesTag = !tagFilter || element.tags.includes(tagFilter)
+          return matchesQuery && matchesTag
+        }),
+      }))
+      .filter((plugin) => plugin.elements.length > 0 || plugin.name.toLowerCase().includes(q))
+  }, [library, query, tagFilter])
 
   return (
     <>
@@ -76,6 +92,19 @@ export function LibrarySidebar({
             placeholder="搜索插件或元素…"
             className="w-full border-b border-faint bg-transparent pb-1.5 text-sm outline-none placeholder:text-muted/60 focus:border-accent"
           />
+          <select
+            value={tagFilter}
+            onChange={(event) => setTagFilter(event.target.value)}
+            aria-label="按标签筛选"
+            className="mt-3 w-full border-b border-faint bg-transparent pb-1.5 text-xs text-muted outline-none focus:border-accent"
+          >
+            <option value="">全部标签</option>
+            {tags.map((tag) => (
+              <option key={tag} value={tag}>
+                #{tag}
+              </option>
+            ))}
+          </select>
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 pb-6">

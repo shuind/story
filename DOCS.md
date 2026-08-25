@@ -33,8 +33,10 @@ app/
   api/library/element/  创建新的 Element Markdown 并 SSH commit/push
 components/
   top-bar.tsx           顶栏：画布切换、缩放、导入、导出
-  library-sidebar.tsx   左侧 Library：搜索、插件分组、元素列表、新建维度/元素
+  library-sidebar.tsx   左侧 Library：全文搜索、标签过滤、插件分组、新建维度/元素
   canvas-card.tsx       画布卡片：三态折叠（墨签/半展/全展入口）
+  canvas-edge-layer.tsx 画布卡片关系线的渲染与移除
+  path-panel.tsx        Path 节点保存、恢复与分叉
   reader-drawer.tsx     右侧抽屉：读全文 / 编辑 markdown        —— 保存后 SSH commit/push
   projection-bar.tsx    底部投影条：多卡拼合复制为 prompt
 lib/
@@ -82,6 +84,7 @@ library/
 ---
 title: 维多利亚英国
 summary: 雾、煤气灯、报童、薪水、阶级、教会……
+tags: [英国, 工业化, 阶级]
 ---
 （正文 markdown）
 \`\`\`
@@ -103,6 +106,7 @@ summary: 雾、煤气灯、报童、薪水、阶级、教会……
 
 **已实现**：
 - 刷新页面恢复卡片位置、折叠状态和视图缩放。
+- 画布快照会保存卡片关系线，旧 JSON 没有 `edges` 时按空数组迁移。
 - 顶栏可以导入和导出 JSON。
 - 顶栏可以把当前卡片顺序导出为 Markdown。
 - 顶栏可以新建、切换和重命名多个本地画布。
@@ -151,9 +155,14 @@ summary: 雾、煤气灯、报童、薪水、阶级、教会……
 
 ---
 
-## 9. 后续可选扩展
+## 9. 扩展状态
 
-- 卡片间连线（表达元素的叠加/投影关系）。
+以下三项已经实现：
+
+- **全文检索与标签过滤**：搜索标题、摘要、正文和标签；元素 frontmatter 支持 `tags`。
+- **Path 最小版本**：保存当前节点、恢复节点、从节点分叉为新画布。
+- **卡片间连线**：选中两张卡片后建立带标签的有向关系线；双击连线移除。
+
+仍属于后续可选扩展：
+
 - 元素被"唤醒"频率的可视化（常用的浮起，冷落的沉降）。
-- Path：记录一次探索轨迹，可回到任一岔口另走一条。
-- 全文检索与标签过滤。
