@@ -2,7 +2,7 @@
 
 一个为长篇小说创作者设计的**素材库管理 + 画布组合工具**。左侧是可折叠的 Library（插件/维度与其元素），中间是无限画布，你把元素当作卡片拖上画布"作画"，随时展开阅读、编辑，或拼合成 prompt 拿到 AI 官网去投影、推衍。
 
-> 当前版本是 **UI 与框架骨架**。所有对外的真实功能（读写文件、提交 GitHub、持久化画布）都以清晰的**占位点位**标出，尚未接入实现。本文档说明整体结构与每个点位如何补全。
+> 当前版本已经打通本地素材库、画布持久化、导入导出、素材编辑保存和多画布管理。GitHub 自动 commit、多模型执行和探索 Path 仍属于后续运行时能力。
 
 ---
 
@@ -27,16 +27,19 @@ app/
   layout.tsx            根布局、字体（Noto Serif SC / Noto Sans SC）、纸墨主题挂载
   globals.css           全部设计令牌（纸、墨、朱砂 accent）与画布网格样式
   page.tsx              主页面：画布状态机（平移/缩放/拖卡/选中）
+  api/library/route.ts  从 library/ 读取 Markdown 和 frontmatter
+  api/library/save/     将编辑后的正文写回 library/ 文件
 components/
-  top-bar.tsx           顶栏：画布名、缩放、导出            —— 占位：切换画布 / 导出
+  top-bar.tsx           顶栏：画布切换、缩放、导入、导出
   library-sidebar.tsx   左侧 Library：搜索、插件分组、元素列表 —— 占位：新维度
   canvas-card.tsx       画布卡片：三态折叠（墨签/半展/全展入口）
-  reader-drawer.tsx     右侧抽屉：读全文 / 编辑 markdown        —— 占位：保存(commit) / GitHub 直达
-  projection-bar.tsx    底部投影条：多卡拼合复制为 prompt        —— 占位：拼合逻辑
+  reader-drawer.tsx     右侧抽屉：读全文 / 编辑 markdown        —— 占位：GitHub commit
+  projection-bar.tsx    底部投影条：多卡拼合复制为 prompt
 lib/
   types.ts              Plugin / ElementDoc / CanvasCard 等类型
-  mock-library.ts       示例 Library 数据（5 个插件，含示例元素全文）
-library/                （待建）真实 markdown 素材库
+  canvas.ts             画布快照校验、导入导出和 Markdown 拼合
+  mock-library.ts       历史示例数据（当前未被 UI 引用）
+library/                真实 Markdown 素材库
 DOCS.md                 本文档
 \`\`\`
 
@@ -56,9 +59,9 @@ DOCS.md                 本文档
 
 ---
 
-## 4. 占位点位一：Library 读写（GitHub）
+## 4. Library 读写（本地 Markdown）
 
-**现状**：`lib/mock-library.ts` 提供硬编码示例数据，`library-sidebar.tsx` 直接读它。
+**现状**：`library/` 已经包含 5 个维度和 15 个元素。`app/api/library/route.ts` 服务端扫描目录并解析 frontmatter，侧栏通过 `/api/library` 获取数据。
 
 **目标形态**：Library 是本仓库 `library/` 下的两级 markdown：
 
@@ -81,55 +84,50 @@ summary: 雾、煤气灯、报童、薪水、阶级、教会……
 （正文 markdown）
 \`\`\`
 
-**补全步骤**：
-1. 建 `library/` 目录与实际 md 文件。
-2. 加一个服务端读取层（如 `app/api/library/route.ts` 用 `fs` + `gray-matter` 解析 frontmatter），返回与 `lib/types.ts` 中 `Plugin[]` 同形状的数据。
-3. 把 `library-sidebar.tsx` 里对 `mockLibrary` 的引用换成 `useSWR('/api/library')`。
-4. **保存/新增/新维度** → 见占位点位三。
+新增维度时，在 `library/` 下新增目录，并放入 `_plugin.md` 元数据文件与元素 Markdown 文件即可。保存接口会拒绝目录外路径和 `_plugin.md` 元数据文件。
 
 > 类型契约已在 `lib/types.ts` 固定：只要 API 返回同形状数据，UI 无需改动。
 
 ---
 
-## 5. 占位点位二：画布持久化（浏览器本地 + 导出）
+## 5. 画布持久化（浏览器本地 + 导入导出）
 
-**现状**：画布状态（`cards`、`view`）只存在 React state，刷新即丢。
+**现状**：`app/page.tsx` 会把每个画布的状态（`cards`、`view`）写入 `localStorage`，画布索引使用 `story-canvas:index`，单个画布使用 `story-canvas:<id>`。
 
 **目标形态**：
 - 用 `localStorage` 存多张画布（key 如 `story-canvas:<id>`），随时保存/切换。
 - 顶栏「导出」把当前画布导出为 `.json`（结构还原）或 `.md`（拼合后的可读文稿）。
 - 支持导入 `.json` 迁移到别的设备。
 
-**补全点位**：
-- `app/page.tsx` — `cards` / `view` 变化时 `useEffect` 写入 localStorage；挂载时读回。
-- `top-bar.tsx` — `onExport` 目前是占位按钮，接入下载逻辑。
-- `top-bar.tsx` — 画布名旁的下拉（当前只有 UI）接入「多画布列表 / 新建 / 切换」。
+**已实现**：
+- 刷新页面恢复卡片位置、折叠状态和视图缩放。
+- 顶栏可以导入和导出 JSON。
+- 顶栏可以把当前卡片顺序导出为 Markdown。
+- 顶栏可以新建、切换和重命名多个本地画布。
+
+**仍待补全**：跨项目/跨设备同步。
 
 ---
 
-## 6. 占位点位三：编辑写通道（commit 回 GitHub）
+## 6. 编辑写通道（保存到本地素材库）
 
-**现状**：`reader-drawer.tsx` 的「编辑」进入文本区，「保存」按钮存在但只关闭编辑态，不落盘。
+**现状**：`reader-drawer.tsx` 的「保存」会调用 `app/api/library/save/route.ts`，保留 frontmatter 并把正文写回对应的 Markdown 文件。
 
-**目标形态**：保存即把改动 commit 回本仓库对应的 `.md` 文件。
+**目标形态**：本地开发时保存即写回本仓库对应的 `.md` 文件；部署到平台后再由 Git 流程提交变更。
 
-**补全步骤**：
-1. 新增 `app/api/library/save/route.ts`：接收 `{ pluginId, elementId, content }`，写入对应 md 文件。
-2. 在 v0 环境中，写入本仓库文件后由平台的 Git 流程提交；若要**独立仓库 + 直接调 GitHub API**，需请求 `GITHUB_TOKEN` 环境变量并用 Octokit 的 `createOrUpdateFileContents`。
-3. `reader-drawer.tsx` 的 `onSave` 调该 API，成功后乐观更新本地缓存。
-4. 「在 GitHub 打开」按钮：拼出 `https://github.com/<org>/<repo>/blob/<branch>/library/<plugin>/<element>.md` 直接跳转。
+当前的「在 GitHub 打开」会跳转到 `shuind/story` 的 `v0/project-69d95889` 分支。真正的 GitHub API commit 仍需要 token 和部署平台的写入策略。
 
 ---
 
-## 7. 占位点位四：投影拼合
+## 7. 投影拼合
 
-**现状**：`projection-bar.tsx` 显示已选卡片数与两个按钮（「复制为 Prompt」「逐卡复制」），拼合函数是占位。
+**现状**：`projection-bar.tsx` 会按选中卡片顺序，从真实 Library 取正文，拼成带元素标题和插件名的 Markdown 并复制到剪贴板。
 
 **目标形态**：
 - **复制为 Prompt**：把所选元素的正文按顺序拼成一段带小标题的 markdown，写入剪贴板（`navigator.clipboard.writeText`），直接粘到 ChatGPT / Claude。
 - **逐卡复制**：单张卡片「全文」抽屉里提供「复制本篇」。
 
-**补全点位**：`projection-bar.tsx` 里根据 `selectedElementIds` 从 Library 取正文拼接；建议格式：
+当前格式为：
 
 \`\`\`markdown
 # 投影素材

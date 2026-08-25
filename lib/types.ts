@@ -1,4 +1,4 @@
-// 领域类型 —— UI 骨架阶段仅用于组件间传递，未接入真实数据源
+// Shared domain types for the library and canvas runtime.
 
 /** 一个元素：library 中的一个 markdown 文件 */
 export interface ElementDoc {
@@ -39,4 +39,26 @@ export interface CanvasDoc {
   id: string
   name: string
   cards: CanvasCard[]
+}
+
+export interface CanvasView {
+  x: number
+  y: number
+  zoom: number
+}
+
+export interface CanvasSnapshot {
+  version: 1
+  canvas: CanvasDoc
+  view: CanvasView
+}
+
+export interface CanvasListItem {
+  id: string
+  name: string
+}
+
+export interface CanvasIndex {
+  activeId: string
+  canvases: CanvasListItem[]
 }

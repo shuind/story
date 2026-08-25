@@ -3,28 +3,52 @@
 import { useEffect, useState } from "react"
 import ReactMarkdown from "react-markdown"
 import remarkGfm from "remark-gfm"
-import { findElement } from "@/lib/mock-library"
+import type { ElementDoc } from "@/lib/types"
 
 interface Props {
-  elementId: string | null
+  element: ElementDoc | null
   onClose: () => void
+  onSave: (element: ElementDoc, content: string) => Promise<void>
+  githubBaseUrl: string
 }
 
 /**
  * 全展抽屉：阅读 / 编辑一个元素的完整 markdown。
- * 编辑与保存（commit 到 GitHub）为骨架占位，未接入。
  */
-export function ReaderDrawer({ elementId, onClose }: Props) {
-  const el = elementId ? findElement(elementId) : undefined
+export function ReaderDrawer({ element: el, onClose, onSave, githubBaseUrl }: Props) {
   const [mode, setMode] = useState<"read" | "edit">("read")
   const [draft, setDraft] = useState("")
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     if (el) {
       setDraft(el.content)
       setMode("read")
+      setSaveError(null)
     }
   }, [el])
+
+  const saveDraft = async () => {
+    if (!el) return
+    setSaving(true)
+    setSaveError(null)
+    try {
+      await onSave(el, draft)
+      setMode("read")
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "素材保存失败")
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const githubHref = el
+    ? `${githubBaseUrl}/blob/v0/project-69d95889/${el.path
+        .split("/")
+        .map((segment) => encodeURIComponent(segment))
+        .join("/")}`
+    : "#"
 
   return (
     <>
@@ -92,7 +116,7 @@ export function ReaderDrawer({ elementId, onClose }: Props) {
                   className="flex-1 resize-none bg-transparent px-8 py-6 font-mono text-[13px] leading-6 outline-none"
                 />
                 <div className="flex items-center justify-between border-t border-faint px-6 py-3">
-                  <p className="text-[11px] text-muted">保存将 commit 到 GitHub（骨架阶段未接入）</p>
+                  <p className="text-[11px] text-muted">保存将写回本地 library/ 文件</p>
                   <div className="flex gap-2">
                     <button
                       type="button"
@@ -106,13 +130,15 @@ export function ReaderDrawer({ elementId, onClose }: Props) {
                     </button>
                     <button
                       type="button"
-                      title="骨架阶段未接入"
-                      className="rounded bg-accent px-4 py-1.5 text-xs text-accent-foreground opacity-60"
+                      onClick={saveDraft}
+                      disabled={saving}
+                      className="rounded bg-accent px-4 py-1.5 text-xs text-accent-foreground disabled:cursor-wait disabled:opacity-60"
                     >
-                      保存并提交
+                      {saving ? "保存中…" : "保存"}
                     </button>
                   </div>
                 </div>
+                {saveError && <p className="px-6 pb-3 text-xs text-accent">{saveError}</p>}
               </div>
             )}
 
@@ -124,13 +150,9 @@ export function ReaderDrawer({ elementId, onClose }: Props) {
               >
                 复制全文
               </button>
-              <button
-                type="button"
-                title="骨架阶段未接入：跳转 GitHub 上的此文件"
-                className="text-xs text-muted hover:text-accent"
-              >
+              <a href={githubHref} target="_blank" rel="noreferrer" className="text-xs text-muted hover:text-accent">
                 在 GitHub 打开 ↗
-              </button>
+              </a>
             </footer>
           </>
         )}

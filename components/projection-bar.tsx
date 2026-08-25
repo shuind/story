@@ -1,11 +1,13 @@
 "use client"
 
 import { useState } from "react"
-import { findElement } from "@/lib/mock-library"
+import { findLibraryElement } from "@/lib/canvas"
+import type { PluginDef } from "@/lib/types"
 
 interface Props {
   selectedElementIds: string[]
   onClear: () => void
+  library: PluginDef[]
 }
 
 /**
@@ -13,16 +15,18 @@ interface Props {
  * “复制为 Prompt” 将选中元素的全文拼合为一段 markdown 写入剪贴板，
  * 供粘贴到 ChatGPT / Claude 等 AI 官网进行投影与推衍。
  */
-export function ProjectionBar({ selectedElementIds, onClear }: Props) {
+export function ProjectionBar({ selectedElementIds, onClear, library }: Props) {
   const [copied, setCopied] = useState(false)
   if (selectedElementIds.length === 0) return null
 
   const copyPrompt = async () => {
     const parts = selectedElementIds
-      .map((id) => findElement(id))
-      .filter(Boolean)
-      .map((el) => `<!-- ${el!.path} -->\n\n${el!.content.trim()}`)
-    const text = parts.join("\n\n---\n\n")
+      .map((id) => findLibraryElement(library, id))
+      .filter((result): result is NonNullable<typeof result> => Boolean(result))
+      .map(({ element, plugin }) => `## ${element.title}（${plugin.name}）\n\n${element.content.trim()}`)
+    const text = [`# 投影素材`, "", ...parts.flatMap((part) => [part, "", "---", ""])]
+      .join("\n")
+      .replace(/\n---\n\n$/, "\n")
     await navigator.clipboard?.writeText(text)
     setCopied(true)
     setTimeout(() => setCopied(false), 1600)

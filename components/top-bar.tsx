@@ -1,28 +1,70 @@
 "use client"
 
+import { useRef } from "react"
+import type { CanvasListItem } from "@/lib/types"
+
 interface Props {
+  canvasId: string
   canvasName: string
+  canvasList: CanvasListItem[]
   zoom: number
   onResetView: () => void
+  onSwitchCanvas: (id: string) => void
+  onCreateCanvas: () => void
+  onRenameCanvas: () => void
+  onExportJson: () => void
+  onExportMarkdown: () => void
+  onImport: (file: File) => void
 }
 
 /**
- * 顶栏：极简一行 —— 画布名、缩放指示、多画布与导出为占位。
+ * 顶栏：画布切换、缩放指示、导入与导出。
  */
-export function TopBar({ canvasName, zoom, onResetView }: Props) {
+export function TopBar({
+  canvasId,
+  canvasName,
+  canvasList,
+  zoom,
+  onResetView,
+  onSwitchCanvas,
+  onCreateCanvas,
+  onRenameCanvas,
+  onExportJson,
+  onExportMarkdown,
+  onImport,
+}: Props) {
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   return (
     <header className="pointer-events-none fixed left-0 right-0 top-0 z-20 flex items-center justify-center px-20 py-5">
       <div className="pointer-events-auto flex items-center gap-4 rounded-full border border-faint bg-surface/90 px-5 py-2 shadow-sm backdrop-blur-sm">
-        <button
-          type="button"
-          title="骨架阶段未接入：多画布切换"
-          className="flex items-baseline gap-2 text-sm hover:text-accent"
-        >
-          <span className="font-serif font-semibold">{canvasName}</span>
-          <svg width="8" height="6" viewBox="0 0 8 6" aria-hidden="true" className="text-muted">
-            <path d="M1 1.5L4 4.5L7 1.5" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" />
-          </svg>
-        </button>
+        <details className="relative">
+          <summary className="flex cursor-pointer list-none items-baseline gap-2 text-sm hover:text-accent">
+            <span className="font-serif font-semibold">{canvasName}</span>
+            <svg width="8" height="6" viewBox="0 0 8 6" aria-hidden="true" className="text-muted">
+              <path d="M1 1.5L4 4.5L7 1.5" stroke="currentColor" strokeWidth="1.2" fill="none" strokeLinecap="round" />
+            </svg>
+          </summary>
+          <div className="absolute left-0 top-7 z-10 flex min-w-48 flex-col rounded border border-faint bg-surface p-1 shadow-md">
+            {canvasList.map((canvas) => (
+              <button
+                key={canvas.id}
+                type="button"
+                onClick={() => onSwitchCanvas(canvas.id)}
+                className={`rounded px-3 py-1.5 text-left text-xs hover:bg-faint/50 ${canvas.id === canvasId ? "text-accent" : "text-foreground"}`}
+              >
+                {canvas.name}
+              </button>
+            ))}
+            <span className="my-1 h-px bg-faint" />
+            <button type="button" onClick={onCreateCanvas} className="rounded px-3 py-1.5 text-left text-xs text-muted hover:bg-faint/50 hover:text-accent">
+              + 新建画布
+            </button>
+            <button type="button" onClick={onRenameCanvas} className="rounded px-3 py-1.5 text-left text-xs text-muted hover:bg-faint/50 hover:text-accent">
+              重命名当前画布
+            </button>
+          </div>
+        </details>
 
         <span className="h-4 w-px bg-faint" />
 
@@ -37,13 +79,33 @@ export function TopBar({ canvasName, zoom, onResetView }: Props) {
 
         <span className="h-4 w-px bg-faint" />
 
-        <button
-          type="button"
-          title="骨架阶段未接入：导出画布为 JSON / markdown"
-          className="text-xs text-muted hover:text-accent"
-        >
-          导出
+        <button type="button" onClick={() => fileInputRef.current?.click()} className="text-xs text-muted hover:text-accent">
+          导入
         </button>
+
+        <details className="relative">
+          <summary className="cursor-pointer list-none text-xs text-muted hover:text-accent">导出</summary>
+          <div className="absolute right-0 top-7 flex min-w-28 flex-col rounded border border-faint bg-surface p-1 shadow-md">
+            <button type="button" onClick={onExportJson} className="rounded px-3 py-1.5 text-left text-xs hover:bg-faint/50">
+              JSON
+            </button>
+            <button type="button" onClick={onExportMarkdown} className="rounded px-3 py-1.5 text-left text-xs hover:bg-faint/50">
+              Markdown
+            </button>
+          </div>
+        </details>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="application/json,.json"
+          className="hidden"
+          onChange={(event) => {
+            const file = event.target.files?.[0]
+            if (file) onImport(file)
+            event.target.value = ""
+          }}
+        />
       </div>
     </header>
   )

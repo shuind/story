@@ -1,34 +1,36 @@
 "use client"
 
 import { useMemo, useState } from "react"
-import { MOCK_LIBRARY } from "@/lib/mock-library"
-import type { ElementDoc } from "@/lib/types"
+import type { ElementDoc, PluginDef } from "@/lib/types"
 
 interface Props {
   open: boolean
   onToggle: () => void
   onPlace: (el: ElementDoc) => void
   onOpenReader: (el: ElementDoc) => void
+  library: PluginDef[]
+  loading: boolean
+  error: string | null
 }
 
 /**
  * Library 侧栏：搜索 / 按插件浏览 / 放上画布。
  * 默认完全收起，只留一枚墨点开关 —— 呼吸感的第一层。
  */
-export function LibrarySidebar({ open, onToggle, onPlace, onOpenReader }: Props) {
+export function LibrarySidebar({ open, onToggle, onPlace, onOpenReader, library, loading, error }: Props) {
   const [query, setQuery] = useState("")
   const [expanded, setExpanded] = useState<Record<string, boolean>>({})
 
   const filtered = useMemo(() => {
-    if (!query.trim()) return MOCK_LIBRARY
+    if (!query.trim()) return library
     const q = query.trim().toLowerCase()
-    return MOCK_LIBRARY.map((p) => ({
+    return library.map((p) => ({
       ...p,
       elements: p.elements.filter(
         (e) => e.title.toLowerCase().includes(q) || e.excerpt.toLowerCase().includes(q),
       ),
     })).filter((p) => p.elements.length > 0 || p.name.toLowerCase().includes(q))
-  }, [query])
+  }, [library, query])
 
   return (
     <>
@@ -65,7 +67,13 @@ export function LibrarySidebar({ open, onToggle, onPlace, onOpenReader }: Props)
         </div>
 
         <nav className="flex-1 overflow-y-auto px-3 pb-6">
-          {filtered.map((plugin) => {
+          {loading && <p className="px-2 py-4 text-xs text-muted">正在读取素材库…</p>}
+          {!loading && error && <p className="px-2 py-4 text-xs text-accent">{error}</p>}
+          {!loading && !error && filtered.length === 0 && (
+            <p className="px-2 py-4 text-xs text-muted">没有匹配的元素</p>
+          )}
+
+          {!loading && !error && filtered.map((plugin) => {
             const isOpen = expanded[plugin.id] ?? query.trim().length > 0
             return (
               <div key={plugin.id} className="mb-1">

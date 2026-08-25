@@ -1,11 +1,11 @@
 "use client"
 
 import type React from "react"
-import { findElement } from "@/lib/mock-library"
-import type { CanvasCard as CardType } from "@/lib/types"
+import type { CanvasCard as CardType, ElementDoc } from "@/lib/types"
 
 interface Props {
   card: CardType
+  element: ElementDoc
   selected: boolean
   onPointerDown: (e: React.PointerEvent, cardId: string) => void
   onToggleFold: (cardId: string) => void
@@ -19,10 +19,7 @@ interface Props {
  * fold 1 —— 半展：名字 + 维度 + 一句摘录
  * 全展 —— 不在画布上展开，而是打开右侧抽屉（阅读/编辑）
  */
-export function CanvasCardView({ card, selected, onPointerDown, onToggleFold, onOpenReader, onRemove }: Props) {
-  const el = findElement(card.elementId)
-  if (!el) return null
-
+export function CanvasCardView({ card, element: el, selected, onPointerDown, onToggleFold, onOpenReader, onRemove }: Props) {
   return (
     <div
       role="button"
