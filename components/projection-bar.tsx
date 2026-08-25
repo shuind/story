@@ -1,12 +1,11 @@
 "use client"
 
 import { useState } from "react"
-import { findLibraryElement } from "@/lib/canvas"
-import type { PluginDef } from "@/lib/types"
+import { getCanvasCardElements } from "@/lib/canvas"
+import type { CanvasCard, PluginDef } from "@/lib/types"
 
 interface Props {
-  selectedElementIds: string[]
-  selectedCardIds: string[]
+  selectedCards: CanvasCard[]
   onClear: () => void
   library: PluginDef[]
   onConnect: () => void
@@ -17,14 +16,19 @@ interface Props {
  * “复制为 Prompt” 将选中元素的全文拼合为一段 markdown 写入剪贴板，
  * 供粘贴到 ChatGPT / Claude 等 AI 官网进行投影与推衍。
  */
-export function ProjectionBar({ selectedElementIds, selectedCardIds, onClear, library, onConnect }: Props) {
+export function ProjectionBar({ selectedCards, onClear, library, onConnect }: Props) {
   const [copied, setCopied] = useState(false)
-  if (selectedElementIds.length === 0) return null
+  if (selectedCards.length === 0) return null
 
   const copyPrompt = async () => {
-    const parts = selectedElementIds
-      .map((id) => findLibraryElement(library, id))
-      .filter((result): result is NonNullable<typeof result> => Boolean(result))
+    const seen = new Set<string>()
+    const parts = selectedCards
+      .flatMap((card) => getCanvasCardElements(library, card))
+      .filter(({ element }) => {
+        if (seen.has(element.id)) return false
+        seen.add(element.id)
+        return true
+      })
       .map(({ element, plugin }) => `## ${element.title}（${plugin.name}）\n\n${element.content.trim()}`)
     const text = [`# 投影素材`, "", ...parts.flatMap((part) => [part, "", "---", ""])]
       .join("\n")
@@ -38,7 +42,7 @@ export function ProjectionBar({ selectedElementIds, selectedCardIds, onClear, li
     <div className="pointer-events-none fixed bottom-8 left-0 right-0 z-20 flex justify-center">
       <div className="pointer-events-auto flex items-center gap-4 rounded-full border border-faint bg-surface/95 px-5 py-2.5 shadow-md backdrop-blur-sm">
         <span className="text-xs text-muted">
-          已选 <span className="font-semibold text-foreground">{selectedElementIds.length}</span> 个元素
+          已选 <span className="font-semibold text-foreground">{selectedCards.length}</span> 张卡片
         </span>
         <button
           type="button"
@@ -47,7 +51,7 @@ export function ProjectionBar({ selectedElementIds, selectedCardIds, onClear, li
         >
           {copied ? "已复制 ✓" : "复制为 Prompt"}
         </button>
-        {selectedCardIds.length === 2 && (
+        {selectedCards.length === 2 && (
           <button type="button" onClick={onConnect} className="text-xs text-muted hover:text-accent">
             连接选中
           </button>

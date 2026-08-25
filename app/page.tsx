@@ -24,6 +24,7 @@ import {
 } from "@/lib/canvas"
 import type {
   CanvasCard,
+  CanvasCardKind,
   CanvasEdge,
   CanvasIndex,
   CanvasListItem,
@@ -390,9 +391,9 @@ export default function Page() {
     [canvasId, showNotice],
   )
 
-  // 侧栏点击元素 → 放到当前视野中心
-  const placeElement = useCallback(
-    (el: ElementDoc) => {
+  // Library 项目 → 放到当前视野中心
+  const placeLibraryItem = useCallback(
+    (kind: CanvasCardKind, targetId: string) => {
       const rect = containerRef.current?.getBoundingClientRect()
       const cx = rect ? rect.width / 2 : 500
       const cy = rect ? rect.height / 2 : 350
@@ -402,7 +403,8 @@ export default function Page() {
         ...cs,
         {
           id: `card-${++cardSeq}`,
-          elementId: el.id,
+          kind,
+          targetId,
           x: worldX - 60 + (cs.length % 5) * 24,
           y: worldY - 20 + (cs.length % 5) * 24,
           fold: 0,
@@ -411,6 +413,9 @@ export default function Page() {
     },
     [view],
   )
+
+  const placeElement = useCallback((element: ElementDoc) => placeLibraryItem("element", element.id), [placeLibraryItem])
+  const placePlugin = useCallback((plugin: PluginDef) => placeLibraryItem("plugin", plugin.id), [placeLibraryItem])
 
   // ---- 指针事件：背景平移 / 卡片拖动 ----
   const onBackgroundPointerDown = (e: React.PointerEvent) => {
@@ -502,8 +507,8 @@ export default function Page() {
     [showNotice],
   )
 
-  const selectedElementIds = cards.filter((c) => selected.has(c.id)).map((c) => c.elementId)
-  const selectedCardIds = cards.filter((c) => selected.has(c.id)).map((c) => c.id)
+  const selectedCards = cards.filter((card) => selected.has(card.id))
+  const selectedCardIds = selectedCards.map((card) => card.id)
 
   const connectSelectedCards = useCallback(() => {
     if (selectedCardIds.length !== 2) return
@@ -558,6 +563,7 @@ export default function Page() {
         open={sidebarOpen}
         onToggle={() => setSidebarOpen((o) => !o)}
         onPlace={placeElement}
+        onPlacePlugin={placePlugin}
         onOpenReader={(el) => setReaderElementId(el.id)}
         library={library}
         loading={libraryLoading}
@@ -587,17 +593,37 @@ export default function Page() {
           <div className="pointer-events-auto">
             {cards.map((card) => (
               (() => {
-                const result = findLibraryElement(library, card.elementId)
+                if (card.kind === "plugin") {
+                  const plugin = library.find((item) => item.id === card.targetId)
+                  if (!plugin) return null
+                  return (
+                    <CanvasCardView
+                      key={card.id}
+                      card={card}
+                      title={plugin.name}
+                      eyebrow="维度"
+                      excerpt={`${plugin.description || "观察维度"} · ${plugin.elements.length} 个元素`}
+                      selected={selected.has(card.id)}
+                      onPointerDown={onCardPointerDown}
+                      onToggleFold={toggleFold}
+                      onRemove={removeCard}
+                    />
+                  )
+                }
+
+                const result = findLibraryElement(library, card.targetId)
                 if (!result) return null
                 return (
                   <CanvasCardView
                     key={card.id}
                     card={card}
-                    element={result.element}
+                    title={result.element.title}
+                    eyebrow={result.element.pluginId}
+                    excerpt={result.element.excerpt}
                     selected={selected.has(card.id)}
                     onPointerDown={onCardPointerDown}
                     onToggleFold={toggleFold}
-                    onOpenReader={(id) => setReaderElementId(id)}
+                    onOpenReader={() => setReaderElementId(result.element.id)}
                     onRemove={removeCard}
                   />
                 )
@@ -609,14 +635,13 @@ export default function Page() {
         {/* 空画布引导 */}
         {cards.length === 0 && (
           <div className="pointer-events-none flex h-full items-center justify-center">
-            <p className="font-serif text-sm text-muted/70">从左侧 Library 选一个元素，放上画布</p>
+            <p className="font-serif text-sm text-muted/70">从左侧 Library 选一个维度或元素，放上画布</p>
           </div>
         )}
       </div>
 
       <ProjectionBar
-        selectedElementIds={selectedElementIds}
-        selectedCardIds={selectedCardIds}
+        selectedCards={selectedCards}
         onClear={() => setSelected(new Set())}
         library={library}
         onConnect={connectSelectedCards}

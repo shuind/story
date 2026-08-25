@@ -1,5 +1,6 @@
 import type {
   CanvasCard,
+  CanvasCardKind,
   CanvasEdge,
   CanvasIndex,
   CanvasListItem,
@@ -104,9 +105,12 @@ export function parseCanvasSnapshot(value: unknown): CanvasSnapshot {
   const cards = canvas.cards.map((card) => {
     if (!card || typeof card !== "object") throw new Error("画布卡片格式无效")
     const item = card as Partial<CanvasCard>
+    const legacyElementId = (item as Partial<CanvasCard> & { elementId?: unknown }).elementId
+    const kind: CanvasCardKind = item.kind === "plugin" ? "plugin" : "element"
+    const targetId = typeof item.targetId === "string" ? item.targetId : legacyElementId
     if (
       typeof item.id !== "string" ||
-      typeof item.elementId !== "string" ||
+      typeof targetId !== "string" ||
       typeof item.x !== "number" ||
       typeof item.y !== "number" ||
       (item.fold !== 0 && item.fold !== 1) ||
@@ -117,7 +121,8 @@ export function parseCanvasSnapshot(value: unknown): CanvasSnapshot {
     }
     return {
       id: item.id,
-      elementId: item.elementId,
+      kind,
+      targetId,
       x: item.x,
       y: item.y,
       fold: item.fold,
@@ -179,10 +184,25 @@ export function findLibraryElement(library: PluginDef[], elementId: string) {
   return undefined
 }
 
+export function getCanvasCardElements(library: PluginDef[], card: CanvasCard) {
+  if (card.kind === "plugin") {
+    const plugin = library.find((item) => item.id === card.targetId)
+    return plugin ? plugin.elements.map((element) => ({ element, plugin })) : []
+  }
+
+  const result = findLibraryElement(library, card.targetId)
+  return result ? [result] : []
+}
+
 export function canvasToMarkdown(snapshot: CanvasSnapshot, library: PluginDef[]) {
+  const seen = new Set<string>()
   const sections = snapshot.canvas.cards
-    .map((card) => findLibraryElement(library, card.elementId))
-    .filter((result): result is NonNullable<typeof result> => Boolean(result))
+    .flatMap((card) => getCanvasCardElements(library, card))
+    .filter(({ element }) => {
+      if (seen.has(element.id)) return false
+      seen.add(element.id)
+      return true
+    })
     .map(({ element, plugin }) => `## ${element.title}（${plugin.name}）\n\n${element.content.trim()}`)
 
   return [`# ${snapshot.canvas.name}`, "", ...sections.flatMap((section) => [section, "", "---", ""])]

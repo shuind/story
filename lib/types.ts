@@ -27,9 +27,12 @@ export interface PluginDef {
 }
 
 /** 画布上的一张卡片 */
+export type CanvasCardKind = "element" | "plugin"
+
 export interface CanvasCard {
   id: string
-  elementId: string
+  kind: CanvasCardKind
+  targetId: string
   x: number
   y: number
   /** 折叠态：0 = 墨签（最折叠），1 = 半展（含摘录） */

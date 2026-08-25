@@ -7,6 +7,7 @@ interface Props {
   open: boolean
   onToggle: () => void
   onPlace: (el: ElementDoc) => void
+  onPlacePlugin: (plugin: PluginDef) => void
   onOpenReader: (el: ElementDoc) => void
   library: PluginDef[]
   loading: boolean
@@ -23,6 +24,7 @@ export function LibrarySidebar({
   open,
   onToggle,
   onPlace,
+  onPlacePlugin,
   onOpenReader,
   library,
   loading,
@@ -133,6 +135,15 @@ export function LibrarySidebar({
                   </button>
                   <button
                     type="button"
+                    onClick={() => onPlacePlugin(plugin)}
+                    aria-label={`把${plugin.name}放上画布`}
+                    title="把维度放上画布"
+                    className="flex h-7 shrink-0 items-center justify-center rounded px-1.5 text-[11px] text-muted hover:bg-faint/50 hover:text-accent"
+                  >
+                    放
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => onCreateElement(plugin)}
                     aria-label={`在${plugin.name}中新建元素`}
                     title="新建元素"
@@ -181,7 +192,7 @@ export function LibrarySidebar({
 
         <div className="border-t border-faint px-5 py-3">
           <p className="text-[11px] leading-5 text-muted">
-            点击元素放上画布 · 悬停「读」直达全文
+            维度点「放」· 点击元素放上画布 · 悬停「读」直达全文
           </p>
         </div>
       </aside>
