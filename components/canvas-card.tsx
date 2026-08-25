@@ -67,45 +67,49 @@ export function CanvasCardView({
             }
           />
           <span className="whitespace-nowrap font-serif text-[13px] font-semibold">{title}</span>
-          <button
-            type="button"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation()
-              onToggleFold(card.id)
-            }}
-            title="展开并写下思考"
-            className="text-[10px] text-muted/60 hover:text-accent"
-          >
-            写
-          </button>
-          {onConnect && (
+          <div className="ml-auto flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
             <button
               type="button"
               onPointerDown={(event) => event.stopPropagation()}
               onClick={(event) => {
                 event.stopPropagation()
-                onConnect()
+                onToggleFold(card.id)
               }}
-              title="选择这张卡片作为连线节点"
-              className={`text-[10px] ${connectLabel === "起点已选" ? "text-accent" : "text-muted/60 hover:text-accent"}`}
+              aria-label={`编辑${title}的思考`}
+              title="写下思考"
+              className="flex h-5 w-5 items-center justify-center rounded text-sm leading-none text-muted hover:bg-background hover:text-accent"
             >
-              {connectLabel === "起点已选" ? "✓" : "连"}
+              ✎
             </button>
-          )}
-          <button
-            type="button"
-            onPointerDown={(event) => event.stopPropagation()}
-            onClick={(event) => {
-              event.stopPropagation()
-              onRemove(card.id)
-            }}
-            aria-label={`删除${title}`}
-            title="删除卡片"
-            className="ml-1 text-xs text-muted/60 hover:text-accent"
-          >
-            ×
-          </button>
+            {onConnect && (
+              <button
+                type="button"
+                onPointerDown={(event) => event.stopPropagation()}
+                onClick={(event) => {
+                  event.stopPropagation()
+                  onConnect()
+                }}
+                aria-label={`连接${title}`}
+                title="开始连接"
+                className={`flex h-5 w-5 items-center justify-center rounded text-sm leading-none ${connectLabel === "起点已选" ? "bg-accent/10 text-accent" : "text-muted hover:bg-background hover:text-accent"}`}
+              >
+                {connectLabel === "起点已选" ? "✓" : "↗"}
+              </button>
+            )}
+            <button
+              type="button"
+              onPointerDown={(event) => event.stopPropagation()}
+              onClick={(event) => {
+                event.stopPropagation()
+                onRemove(card.id)
+              }}
+              aria-label={`删除${title}`}
+              title="删除卡片"
+              className="flex h-5 w-5 items-center justify-center rounded text-sm leading-none text-muted hover:bg-background hover:text-accent"
+            >
+              ×
+            </button>
+          </div>
         </div>
       ) : (
         /* 半展态 */
