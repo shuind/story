@@ -9,6 +9,7 @@ export const runtime = "nodejs"
 
 const libraryRoot = path.resolve(process.cwd(), "library")
 const execFile = promisify(execFileCallback)
+const gitRemote = process.env.GIT_REMOTE ?? "git@github.com:shuind/story.git"
 
 async function runGit(args: string[]) {
   const sshPath = process.env.GIT_SSH ?? (process.platform === "win32" ? "C:\\Windows\\System32\\OpenSSH\\ssh.exe" : "ssh")
@@ -60,7 +61,7 @@ export async function POST(request: Request) {
     await runGit(["commit", "--only", "-m", `content: update ${title}`, "--", relativePath])
     const branch = (await runGit(["branch", "--show-current"])).stdout.trim()
     if (!branch) throw new Error("无法确定当前 Git 分支")
-    await runGit(["push", "origin", branch])
+    await runGit(["push", gitRemote, branch])
 
     return NextResponse.json({ ok: true, content, committed: true, pushed: true })
   } catch (error) {

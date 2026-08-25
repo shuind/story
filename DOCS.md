@@ -2,7 +2,7 @@
 
 一个为长篇小说创作者设计的**素材库管理 + 画布组合工具**。左侧是可折叠的 Library（插件/维度与其元素），中间是无限画布，你把元素当作卡片拖上画布"作画"，随时展开阅读、编辑，或拼合成 prompt 拿到 AI 官网去投影、推衍。
 
-> 当前版本已经打通本地素材库、画布持久化、导入导出、素材编辑保存和多画布管理。GitHub 自动 commit、多模型执行和探索 Path 仍属于后续运行时能力。
+> 当前版本已经打通本地素材库、画布持久化、导入导出、素材编辑保存、多画布管理和 SSH GitHub commit/push。多模型执行和探索 Path 仍属于后续运行时能力。
 
 ---
 
@@ -33,7 +33,7 @@ components/
   top-bar.tsx           顶栏：画布切换、缩放、导入、导出
   library-sidebar.tsx   左侧 Library：搜索、插件分组、元素列表 —— 占位：新维度
   canvas-card.tsx       画布卡片：三态折叠（墨签/半展/全展入口）
-  reader-drawer.tsx     右侧抽屉：读全文 / 编辑 markdown        —— 占位：GitHub commit
+  reader-drawer.tsx     右侧抽屉：读全文 / 编辑 markdown        —— 保存后 SSH commit/push
   projection-bar.tsx    底部投影条：多卡拼合复制为 prompt
 lib/
   types.ts              Plugin / ElementDoc / CanvasCard 等类型
@@ -109,13 +109,13 @@ summary: 雾、煤气灯、报童、薪水、阶级、教会……
 
 ---
 
-## 6. 编辑写通道（保存到本地素材库）
+## 6. 编辑写通道（commit/push 回 GitHub）
 
-**现状**：`reader-drawer.tsx` 的「保存」会调用 `app/api/library/save/route.ts`，保留 frontmatter 并把正文写回对应的 Markdown 文件。
+**现状**：`reader-drawer.tsx` 的「保存」会调用 `app/api/library/save/route.ts`，保留 frontmatter、把正文写回对应的 Markdown 文件，然后只提交该文件并通过 SSH 推送当前分支。
 
-**目标形态**：本地开发时保存即写回本仓库对应的 `.md` 文件；部署到平台后再由 Git 流程提交变更。
+**目标形态**：保存即写回本仓库对应的 `.md` 文件并提交到当前 GitHub 分支。
 
-当前的「在 GitHub 打开」会跳转到 `shuind/story` 的 `v0/project-69d95889` 分支。真正的 GitHub API commit 仍需要 token 和部署平台的写入策略。
+当前的「在 GitHub 打开」会跳转到 `shuind/story` 的 `v0/project-69d95889` 分支。推送目标默认是 `git@github.com:shuind/story.git`，也可以通过 `GIT_REMOTE` 覆盖；SSH 程序可以通过 `GIT_SSH` 覆盖。
 
 ---
 
