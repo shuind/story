@@ -11,9 +11,10 @@ interface Props {
   library: PluginDef[]
   onConnect: (label: string) => void
   onDelete: () => void
-  onFocusNote: (cardId: string) => void
+  onToggleNote: (cardId: string) => void
   onRead: (card: CanvasCard) => void
   onStartConnection: (cardId: string) => void
+  onCancelConnection: () => void
   connectionMode: boolean
   connectionLabel: string
   onConnectionLabelChange: (label: string) => void
@@ -31,9 +32,10 @@ export function ProjectionBar({
   library,
   onConnect,
   onDelete,
-  onFocusNote,
+  onToggleNote,
   onRead,
   onStartConnection,
+  onCancelConnection,
   connectionMode,
   connectionLabel,
   onConnectionLabelChange,
@@ -82,8 +84,8 @@ export function ProjectionBar({
         </span>
         {selectedCards.length === 1 && (
           <>
-            <button type="button" onClick={() => onFocusNote(selectedCards[0].id)} className="rounded-xl px-2.5 py-1.5 text-xs text-muted hover:bg-background hover:text-foreground">
-              写笔记
+            <button type="button" onClick={() => onToggleNote(selectedCards[0].id)} className="rounded-xl px-2.5 py-1.5 text-xs text-muted hover:bg-background hover:text-foreground">
+              {selectedCards[0].fold === 0 ? "写笔记" : "收起笔记"}
             </button>
             <button type="button" onClick={() => onRead(selectedCards[0])} className="rounded-xl px-2.5 py-1.5 text-xs text-muted hover:bg-background hover:text-accent">
               阅读
@@ -127,6 +129,9 @@ export function ProjectionBar({
               placeholder="关系标签"
               className="w-28 bg-transparent px-2 py-1 text-xs outline-none placeholder:text-muted/60"
             />
+            <button type="button" onClick={onCancelConnection} className="rounded-lg px-2 py-1 text-[11px] text-muted hover:bg-background hover:text-foreground">
+              取消连线
+            </button>
           </div>
         )}
         <button type="button" onClick={onDelete} className="rounded-xl px-2.5 py-1.5 text-xs text-muted hover:bg-background hover:text-accent">

@@ -24,7 +24,7 @@ interface Props {
  * 画布卡片，两级折叠。Element 和 Plugin 共用位置、选择、连线与折叠行为：
  * fold 0 —— 墨签：只有一个名字，像贴在画布上的标签
  * fold 1 —— 半展：名字 + 维度 + 一句摘录
- * 全展 —— 不在画布上展开，而是打开右侧抽屉（阅读/编辑）
+ * 半展 —— 显示摘要和可编辑的画布思考；素材全文在右侧抽屉阅读。
  */
 export function CanvasCardView({
   card,
@@ -46,7 +46,6 @@ export function CanvasCardView({
     <div
       role="group"
       onPointerDown={(e) => onPointerDown(e, card.id)}
-      onDoubleClick={() => onToggleFold(card.id)}
       className={`group absolute select-none rounded-2xl border bg-surface shadow-sm transition-shadow ${
         selected
           ? "border-accent shadow-lg ring-4 ring-accent/10"

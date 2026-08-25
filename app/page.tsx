@@ -253,6 +253,8 @@ export default function Page() {
         setView(snapshot?.view ?? { x: 0, y: 0, zoom: 1 })
         setRevisions(readPathRevisions(nextId))
         setSelected(new Set())
+        setConnectSourceCardId(null)
+        setConnectionLabel("")
         if (snapshot) syncCardSequence(snapshot.canvas.cards)
         showNotice(`已切换到「${metadata.name}」`)
       } catch {
@@ -274,6 +276,8 @@ export default function Page() {
     setRevisions([])
     writePathRevisions(id, [])
     setSelected(new Set())
+    setConnectSourceCardId(null)
+    setConnectionLabel("")
     showNotice("已新建画布")
   }, [showNotice])
 
@@ -363,6 +367,8 @@ export default function Page() {
       setEdges(snapshot.canvas.edges)
       setView(snapshot.view)
       setSelected(new Set())
+      setConnectSourceCardId(null)
+      setConnectionLabel("")
       syncCardSequence(snapshot.canvas.cards)
       showNotice(`已恢复「${revision.label}」`)
     },
@@ -405,6 +411,8 @@ export default function Page() {
           setRevisions(copiedRevisions)
           writePathRevisions(nextId, copiedRevisions)
           setSelected(new Set())
+          setConnectSourceCardId(null)
+          setConnectionLabel("")
           syncCardSequence(snapshot.canvas.cards)
           setPathOpen(false)
           showNotice(`已从「${revision.label}」创建分支`)
@@ -436,6 +444,8 @@ export default function Page() {
           current.map((canvas) => (canvas.id === canvasId ? { ...canvas, name: snapshot.canvas.name } : canvas)),
         )
         setSelected(new Set())
+        setConnectSourceCardId(null)
+        setConnectionLabel("")
         syncCardSequence(snapshot.canvas.cards)
         showNotice("已导入画布")
       } catch (error) {
@@ -539,6 +549,18 @@ export default function Page() {
     drag.current = null
     if (!d) return
     if (d.kind === "card" && !d.moved) {
+      if (connectSourceCardId) {
+        if (connectSourceCardId === d.cardId) {
+          setConnectSourceCardId(null)
+          setConnectionLabel("")
+          return
+        }
+        connectCards(connectSourceCardId, d.cardId, connectionLabel)
+        setConnectSourceCardId(null)
+        setConnectionLabel("")
+        setSelected(new Set([connectSourceCardId, d.cardId]))
+        return
+      }
       // 视为点击：切换选中（shift 累加）
       setSelected((s) => {
         const next = e.shiftKey ? new Set(s) : new Set<string>()
@@ -549,6 +571,8 @@ export default function Page() {
     }
     if (d.kind === "pan" && Math.abs(e.clientX - d.startX) + Math.abs(e.clientY - d.startY) < 3) {
       setSelected(new Set())
+      setConnectSourceCardId(null)
+      setConnectionLabel("")
     }
   }
 
@@ -593,6 +617,7 @@ export default function Page() {
     setEdges((current) => current.filter((edge) => !ids.has(edge.fromCardId) && !ids.has(edge.toCardId)))
     setSelected(new Set())
     setConnectSourceCardId(null)
+    setConnectionLabel("")
     showNotice(`已删除 ${ids.size} 张卡片`)
   }, [selected, showNotice])
 
@@ -692,11 +717,30 @@ export default function Page() {
     [connectCards, connectSourceCardId, connectionLabel, showNotice],
   )
 
-  const focusCardNote = useCallback((cardId: string) => {
-    setCards((current) => current.map((card) => (card.id === cardId ? { ...card, fold: 1 } : card)))
-    requestAnimationFrame(() => {
-      document.querySelector<HTMLTextAreaElement>(`[data-card-note="${cardId}"]`)?.focus()
-    })
+  const toggleCardNote = useCallback(
+    (cardId: string) => {
+      const card = cards.find((item) => item.id === cardId)
+      if (!card) return
+      const opening = card.fold === 0
+      setCards((current) => current.map((item) => (item.id === cardId ? { ...item, fold: opening ? 1 : 0 } : item)))
+      if (opening) {
+        requestAnimationFrame(() => {
+          document.querySelector<HTMLTextAreaElement>(`[data-card-note="${cardId}"]`)?.focus()
+        })
+      }
+    },
+    [cards],
+  )
+
+  const clearSelection = useCallback(() => {
+    setSelected(new Set())
+    setConnectSourceCardId(null)
+    setConnectionLabel("")
+  }, [])
+
+  const cancelConnection = useCallback(() => {
+    setConnectSourceCardId(null)
+    setConnectionLabel("")
   }, [])
 
   const readCard = useCallback(
@@ -863,14 +907,15 @@ export default function Page() {
 
       <ProjectionBar
         selectedCards={selectedCards}
-        onClear={() => setSelected(new Set())}
+        onClear={clearSelection}
         library={library}
         edges={edges}
         onConnect={connectSelectedCards}
         onDelete={removeSelectedCards}
-        onFocusNote={focusCardNote}
+        onToggleNote={toggleCardNote}
         onRead={readCard}
         onStartConnection={startCardConnection}
+        onCancelConnection={cancelConnection}
         connectionMode={connectSourceCardId !== null}
         connectionLabel={connectionLabel}
         onConnectionLabelChange={setConnectionLabel}
