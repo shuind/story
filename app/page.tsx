@@ -33,6 +33,7 @@ import type {
   CanvasListItem,
   CanvasPathState,
   CanvasRevision,
+  CanvasView,
   ElementDoc,
   PluginDef,
 } from "@/lib/types"
@@ -72,6 +73,24 @@ interface DialogConfig {
   fields: InputDialogField[]
   submitLabel: string
   onSubmit: (values: Record<string, string>) => Promise<void> | void
+}
+
+interface HistoryState {
+  cards: CanvasCard[]
+  edges: CanvasEdge[]
+  view: CanvasView
+}
+
+function cloneHistoryState(state: HistoryState): HistoryState {
+  return {
+    cards: state.cards.map((card) => ({ ...card })),
+    edges: state.edges.map((edge) => ({ ...edge })),
+    view: { ...state.view },
+  }
+}
+
+function historyStateKey(state: HistoryState) {
+  return JSON.stringify(state)
 }
 
 function syncCardSequence(cards: CanvasCard[]) {
@@ -123,12 +142,20 @@ export default function Page() {
   const [notice, setNotice] = useState<string | null>(null)
   const [pathOpen, setPathOpen] = useState(false)
   const [revisions, setRevisions] = useState<CanvasRevision[]>([])
+  const [historyVersion, setHistoryVersion] = useState(0)
 
   const githubBaseUrl = "https://github.com/shuind/story"
 
   const containerRef = useRef<HTMLDivElement>(null)
   const spacePressed = useRef(false)
   const cardClipboard = useRef<{ cards: CanvasCard[]; edges: CanvasEdge[] } | null>(null)
+  const history = useRef<{ entries: HistoryState[]; index: number; timer: number | null }>({
+    entries: [],
+    index: -1,
+    timer: null,
+  })
+  const historyInitialized = useRef(false)
+  const historySuppressNextEffect = useRef(false)
   const drag = useRef<
     | { kind: "pan"; startX: number; startY: number; origX: number; origY: number }
     | {
@@ -143,6 +170,75 @@ export default function Page() {
     | { kind: "select"; startX: number; startY: number; moved: boolean }
     | null
   >(null)
+
+  const showNotice = useCallback((message: string) => {
+    setNotice(message)
+    window.setTimeout(() => setNotice(null), 2400)
+  }, [])
+
+  const resetHistory = useCallback((state: HistoryState) => {
+    const snapshot = cloneHistoryState(state)
+    if (history.current.timer !== null) window.clearTimeout(history.current.timer)
+    history.current = { entries: [snapshot], index: 0, timer: null }
+    historyInitialized.current = true
+    historySuppressNextEffect.current = false
+    setHistoryVersion((version) => version + 1)
+  }, [])
+
+  const recordHistoryState = useCallback((state: HistoryState) => {
+    if (!historyInitialized.current) return
+    const snapshot = cloneHistoryState(state)
+    const current = history.current.entries[history.current.index]
+    if (current && historyStateKey(current) === historyStateKey(snapshot)) return
+    const entries = history.current.entries.slice(0, history.current.index + 1)
+    entries.push(snapshot)
+    if (entries.length > 100) entries.shift()
+    history.current.entries = entries
+    history.current.index = entries.length - 1
+    setHistoryVersion((version) => version + 1)
+  }, [])
+
+  const flushHistory = useCallback(
+    (state: HistoryState) => {
+      if (history.current.timer !== null) {
+        window.clearTimeout(history.current.timer)
+        history.current.timer = null
+      }
+      recordHistoryState(state)
+    },
+    [recordHistoryState],
+  )
+
+  const restoreHistoryState = useCallback((state: HistoryState) => {
+    historySuppressNextEffect.current = true
+    setCards(state.cards.map((card) => ({ ...card })))
+    setEdges(state.edges.map((edge) => ({ ...edge })))
+    setView({ ...state.view })
+    setSelected(new Set())
+    setConnectSourceCardId(null)
+    setConnectionLabel("")
+    setSelectionBox(null)
+  }, [])
+
+  const undo = useCallback(() => {
+    if (!hydrated || !historyInitialized.current) return
+    flushHistory({ cards, edges, view })
+    const previousIndex = history.current.index - 1
+    if (previousIndex < 0) return
+    history.current.index = previousIndex
+    restoreHistoryState(history.current.entries[previousIndex])
+    showNotice("已撤销")
+  }, [cards, edges, flushHistory, hydrated, restoreHistoryState, showNotice, view])
+
+  const redo = useCallback(() => {
+    if (!hydrated || !historyInitialized.current) return
+    flushHistory({ cards, edges, view })
+    const nextIndex = history.current.index + 1
+    if (nextIndex >= history.current.entries.length) return
+    history.current.index = nextIndex
+    restoreHistoryState(history.current.entries[nextIndex])
+    showNotice("已重做")
+  }, [cards, edges, flushHistory, hydrated, restoreHistoryState, showNotice, view])
 
   const refreshLibrary = useCallback(async () => {
     setLibraryLoading(true)
@@ -163,6 +259,7 @@ export default function Page() {
   }, [refreshLibrary])
 
   useEffect(() => {
+    let initialState: HistoryState = { cards: [], edges: [], view: { x: 0, y: 0, zoom: 1 } }
     try {
       const storedIndex = window.localStorage.getItem(CANVAS_INDEX_STORAGE_KEY)
       let index = storedIndex
@@ -191,18 +288,21 @@ export default function Page() {
         setCards(snapshot.canvas.cards)
         setEdges(snapshot.canvas.edges)
         setView(snapshot.view)
+        initialState = { cards: snapshot.canvas.cards, edges: snapshot.canvas.edges, view: snapshot.view }
         syncCardSequence(snapshot.canvas.cards)
       }
       setRevisions(readPathRevisions(index.activeId))
       setCanvasId(index.activeId)
       setCanvasList(index.canvases)
+      resetHistory(initialState)
     } catch {
       window.localStorage.removeItem(CANVAS_INDEX_STORAGE_KEY)
       window.localStorage.removeItem(CANVAS_STORAGE_KEY)
+      resetHistory(initialState)
     } finally {
       setHydrated(true)
     }
-  }, [])
+  }, [resetHistory])
 
   useEffect(() => {
     if (!hydrated) return
@@ -215,9 +315,23 @@ export default function Page() {
     window.localStorage.setItem(CANVAS_INDEX_STORAGE_KEY, JSON.stringify(index))
   }, [cards, canvasId, canvasList, canvasName, edges, hydrated, view])
 
-  const showNotice = useCallback((message: string) => {
-    setNotice(message)
-    window.setTimeout(() => setNotice(null), 2400)
+  useEffect(() => {
+    if (!hydrated || !historyInitialized.current) return
+    if (historySuppressNextEffect.current) {
+      historySuppressNextEffect.current = false
+      return
+    }
+    if (history.current.timer !== null) window.clearTimeout(history.current.timer)
+    history.current.timer = window.setTimeout(() => {
+      history.current.timer = null
+      recordHistoryState({ cards, edges, view })
+    }, 220)
+  }, [cards, edges, hydrated, recordHistoryState, view])
+
+  useEffect(() => {
+    return () => {
+      if (history.current.timer !== null) window.clearTimeout(history.current.timer)
+    }
   }, [])
 
   const createPlugin = useCallback(() => {
@@ -285,11 +399,17 @@ export default function Page() {
       try {
         const raw = window.localStorage.getItem(canvasStorageKey(nextId))
         const snapshot = raw ? parseCanvasSnapshot(JSON.parse(raw)) : null
+        const nextState: HistoryState = {
+          cards: snapshot?.canvas.cards ?? [],
+          edges: snapshot?.canvas.edges ?? [],
+          view: snapshot?.view ?? { x: 0, y: 0, zoom: 1 },
+        }
         setCanvasId(nextId)
         setCanvasName(metadata.name)
-        setCards(snapshot?.canvas.cards ?? [])
-        setEdges(snapshot?.canvas.edges ?? [])
-        setView(snapshot?.view ?? { x: 0, y: 0, zoom: 1 })
+        setCards(nextState.cards)
+        setEdges(nextState.edges)
+        setView(nextState.view)
+        resetHistory(nextState)
         setRevisions(readPathRevisions(nextId))
         setSelected(new Set())
         setConnectSourceCardId(null)
@@ -300,7 +420,7 @@ export default function Page() {
         showNotice("画布读取失败")
       }
     },
-    [canvasId, canvasList, showNotice],
+    [canvasId, canvasList, resetHistory, showNotice],
   )
 
   const createCanvas = useCallback(() => {
@@ -312,13 +432,14 @@ export default function Page() {
     setCards([])
     setEdges([])
     setView({ x: 0, y: 0, zoom: 1 })
+    resetHistory({ cards: [], edges: [], view: { x: 0, y: 0, zoom: 1 } })
     setRevisions([])
     writePathRevisions(id, [])
     setSelected(new Set())
     setConnectSourceCardId(null)
     setConnectionLabel("")
     showNotice("已新建画布")
-  }, [showNotice])
+  }, [resetHistory, showNotice])
 
   const renameCanvas = useCallback(() => {
     setDialog({
@@ -405,13 +526,14 @@ export default function Page() {
       setCards(snapshot.canvas.cards)
       setEdges(snapshot.canvas.edges)
       setView(snapshot.view)
+      resetHistory({ cards: snapshot.canvas.cards, edges: snapshot.canvas.edges, view: snapshot.view })
       setSelected(new Set())
       setConnectSourceCardId(null)
       setConnectionLabel("")
       syncCardSequence(snapshot.canvas.cards)
       showNotice(`已恢复「${revision.label}」`)
     },
-    [showNotice],
+    [resetHistory, showNotice],
   )
 
   const forkRevision = useCallback(
@@ -447,6 +569,7 @@ export default function Page() {
           setCards(snapshot.canvas.cards)
           setEdges(snapshot.canvas.edges)
           setView(snapshot.view)
+          resetHistory({ cards: snapshot.canvas.cards, edges: snapshot.canvas.edges, view: snapshot.view })
           setRevisions(copiedRevisions)
           writePathRevisions(nextId, copiedRevisions)
           setSelected(new Set())
@@ -458,7 +581,7 @@ export default function Page() {
         },
       })
     },
-    [canvasName, revisions, showNotice],
+    [canvasName, resetHistory, revisions, showNotice],
   )
 
   const exportJson = useCallback(() => {
@@ -478,6 +601,7 @@ export default function Page() {
         setCards(snapshot.canvas.cards)
         setEdges(snapshot.canvas.edges)
         setView(snapshot.view)
+        resetHistory({ cards: snapshot.canvas.cards, edges: snapshot.canvas.edges, view: snapshot.view })
         setCanvasName(snapshot.canvas.name)
         setCanvasList((current) =>
           current.map((canvas) => (canvas.id === canvasId ? { ...canvas, name: snapshot.canvas.name } : canvas)),
@@ -491,7 +615,7 @@ export default function Page() {
         showNotice(error instanceof Error ? error.message : "画布导入失败")
       }
     },
-    [canvasId, showNotice],
+    [canvasId, resetHistory, showNotice],
   )
 
   // Library 项目 → 点击时放到视野中心，拖拽时放到指针位置
@@ -828,6 +952,18 @@ export default function Page() {
       const isTyping = target?.isContentEditable || target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.tagName === "SELECT"
       if (isTyping) return
 
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault()
+        if (event.shiftKey) redo()
+        else undo()
+        return
+      }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "y") {
+        event.preventDefault()
+        redo()
+        return
+      }
+
       if (event.code === "Space") {
         event.preventDefault()
         spacePressed.current = true
@@ -904,7 +1040,7 @@ export default function Page() {
       window.removeEventListener("keyup", onKeyUp)
       window.removeEventListener("blur", onBlur)
     }
-  }, [adjustZoom, cards, cloneCards, duplicateSelectedCards, edges, fitCanvas, nudgeSelectedCards, selected.size, showNotice])
+  }, [adjustZoom, cards, cloneCards, duplicateSelectedCards, edges, fitCanvas, nudgeSelectedCards, redo, selected.size, showNotice, undo])
 
   const removeEdge = useCallback(
     (edgeId: string) => {
@@ -916,6 +1052,8 @@ export default function Page() {
 
   const selectedCards = cards.filter((card) => selected.has(card.id))
   const selectedCardIds = selectedCards.map((card) => card.id)
+  const canUndo = historyVersion >= 0 && historyInitialized.current && history.current.index > 0
+  const canRedo = historyVersion >= 0 && historyInitialized.current && history.current.index < history.current.entries.length - 1
 
   const connectCards = useCallback(
     (fromCardId: string, toCardId: string, label: string) => {
@@ -1019,6 +1157,10 @@ export default function Page() {
         onZoomIn={() => adjustZoom(1.15)}
         onZoomOut={() => adjustZoom(0.87)}
         onFitCanvas={fitCanvas}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        onUndo={undo}
+        onRedo={redo}
         onSwitchCanvas={switchCanvas}
         onCreateCanvas={createCanvas}
         onRenameCanvas={renameCanvas}

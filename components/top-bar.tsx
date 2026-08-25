@@ -12,6 +12,10 @@ interface Props {
   onZoomIn: () => void
   onZoomOut: () => void
   onFitCanvas: () => void
+  canUndo: boolean
+  canRedo: boolean
+  onUndo: () => void
+  onRedo: () => void
   onSwitchCanvas: (id: string) => void
   onCreateCanvas: () => void
   onRenameCanvas: () => void
@@ -34,6 +38,10 @@ export function TopBar({
   onZoomIn,
   onZoomOut,
   onFitCanvas,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onSwitchCanvas,
   onCreateCanvas,
   onRenameCanvas,
@@ -86,6 +94,29 @@ export function TopBar({
           <span>添加</span>
           <kbd className="rounded bg-background/15 px-1.5 py-0.5 font-mono text-[10px]">Ctrl/⌘ K</kbd>
         </button>
+
+        <div className="flex items-center gap-0.5 rounded-full border border-faint bg-background/50 p-0.5">
+          <button
+            type="button"
+            onClick={onUndo}
+            disabled={!canUndo}
+            aria-label="撤销"
+            title="撤销 Ctrl/⌘ Z"
+            className="flex h-6 w-7 items-center justify-center rounded-full text-base text-muted hover:bg-surface hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            ↶
+          </button>
+          <button
+            type="button"
+            onClick={onRedo}
+            disabled={!canRedo}
+            aria-label="重做"
+            title="重做 Ctrl/⌘ Shift Z"
+            className="flex h-6 w-7 items-center justify-center rounded-full text-base text-muted hover:bg-surface hover:text-accent disabled:cursor-not-allowed disabled:opacity-30"
+          >
+            ↷
+          </button>
+        </div>
 
         <span className="h-4 w-px bg-faint" />
 
